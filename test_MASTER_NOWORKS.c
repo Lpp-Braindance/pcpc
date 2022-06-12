@@ -356,6 +356,7 @@ int main(int argc, char *argv[])
     //! END PROCESES WORK AND PRINT TOTAL TIME FROM MASTER
     if (comm_word_rank == MASTER)
     {
+        MPI_Wait(p_bsend_prec, MPI_STATUS_IGNORE); // deve aspettare che invia a tutti i processi
         MPI_Wait(&igat, MPI_STATUS_IGNORE);
         //print_results(comm_word_rank, tmp_p_recv, nBodies);
         end_time = MPI_Wtime();

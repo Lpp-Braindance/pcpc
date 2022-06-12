@@ -367,11 +367,10 @@ int main(int argc, char *argv[])
         #endif
         printf("time : %f \n", (end_time - start_time));
     }
-
+    
+    MPI_Finalize();
     // RESOURCES RELEASE
     free(buf);
     free(buf_recv);
-
-    MPI_Finalize();
     return 0;
 }

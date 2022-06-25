@@ -340,13 +340,7 @@ int main(int argc, char *argv[])
         // DEFINE TMP VARIABLES
         int i, j;
         Body *tmp_buf_swap;
-        int proc_send_req_compltd;
         MPI_Request pending_allgath_req = MPI_REQUEST_NULL;
-        MPI_Request proc_send_reqs[2];
-        proc_send_reqs[0] = *allgath_pointer_prec_req;
-        proc_send_reqs[1] = *allgath_pointer_next_req;
-        int send_req_curr;
-        int send_req_prec;
         // START i-th PROCES WORK
         for (int iter = 1; iter <= 10; iter++)
         {
@@ -370,37 +364,31 @@ int main(int argc, char *argv[])
             if (worker_rank == MASTER && iter > 1 && print_res == 1)
                 printResults(p, nBodies);
             // WAITS FOR THE PREVIOUS REQUEST TO WRITE IN THE SEND BUFFER
-            MPI_Test(allgath_pointer_next_req, &send_req_curr, MPI_STATUS_IGNORE);
-            MPI_Test(allgath_pointer_prec_req, &send_req_prec, MPI_STATUS_IGNORE);
-            if ( (send_req_curr == 0 && send_req_prec == MPI_UNDEFINED) || (send_req_prec == 1 && send_req_curr == 0) )
+            int ok;
+            MPI_Test(allgath_pointer_next_req,&ok, MPI_STATUS_IGNORE);
+            if(ok == 0)
             {
+                MPI_Wait(allgath_pointer_prec_req, MPI_STATUS_IGNORE);
                 prepereSendBuffer(p, p_send, own_portion, start_own_portion);
+                // CALCULATION OF RESULT
                 integratePositionSplit(p_send, dt, own_portion, start_own_portion, Fx, Fy, Fz);
                 // SWAP BUFFER POINTERS FOR NEXT ITERATION
-                swapBuffers(p, p_send);
                 // SWAP REQEUST POINTER FOR NEXT ITERATION
-                swapRequests(allgath_pointer_prec_req, allgath_pointer_next_req);       
+                tmp_buf_swap = p;
+                p = p_send;
+                p_send = tmp_buf_swap;
+                
+                tmp_allgath_send_req_swap = allgath_pointer_prec_req;
+                allgath_pointer_prec_req = allgath_pointer_next_req;
+                allgath_pointer_next_req = tmp_allgath_send_req_swap;
             }
-            else if (send_req_curr == 0 && send_req_prec == 0)
-            {
-                MPI_Waitany(2, proc_send_reqs, &proc_send_req_compltd, MPI_STATUS_IGNORE);
-
-                if(proc_send_req_compltd == 0)// la richiesta di inivio corrente NON è stata completata => usare l'altro buffer per l'invio per non aspettare
-                {
-                    prepereSendBuffer(p, p_send, own_portion, start_own_portion);
-                    integratePositionSplit(p_send, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-                    // SWAP BUFFER POINTERS FOR NEXT ITERATION
-                    swapBuffers(p, p_send);
-                    // SWAP REQEUST POINTER FOR NEXT ITERATION
-                    swapRequests(allgath_pointer_prec_req, allgath_pointer_next_req);                 
-                }
-                else // la richiesta di inivio corrente è stata completata => non c'è bisogno di usare l'altro buffer per l'invio
-                    integratePositionSplit(p, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-            }
-            else if( ( send_req_prec == 0 && send_req_curr == 1) || (send_req_curr == 1 && send_req_curr == 1) ) 
-            {
+            else
                 integratePositionSplit(p, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-            }
+            
+            // tmp_allgath_send_req_swap = allgath_pointer_prec_req;
+            // allgath_pointer_prec_req = allgath_pointer_next_req;
+            // allgath_pointer_next_req = tmp_allgath_send_req_swap;
+
             // END i-th ITERATION
             if (worker_rank == MASTER)
             {
@@ -425,7 +413,7 @@ int main(int argc, char *argv[])
         end_time = MPI_Wtime();
         avgTime = totalTime / (double)(nIters - 1);
         printf("%d Bodies: average %0.3f Billion Interactions / second\n", nBodies, 1e-9 * nBodies * nBodies / avgTime);
-        printf("time : %f \n", (end_time - start_time));
+        printf("time : %f \n\n", (end_time - start_time));
     }
     // RESOURCES RELEASE
     free(buf);

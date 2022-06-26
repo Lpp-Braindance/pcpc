@@ -6,12 +6,12 @@ n_proc=$2  #prende in input come secondo parametro il numero di massimo di n pro
 #controlla se viene specificato il parametro -t per eseguire il programma che salva i risultati su file
 if [[ "$#" -eq 3 && $3 == "-t" ]] 
 then
-    mpirun -np 1 nbody_def.out $nBodies -t
+    mpirun -np 1 ../nbody_split.out $nBodies -t
 fi
 #per non mostare l'output del programma, ma solo l'output dei test, specificare -dn
 if [[ "$#" -eq 4 && $4 == "-dn" ]] 
 then
-    mpirun -np 1 nbody_def.out $nBodies -t 1>/dev/null
+    mpirun -np 1 ../nbody_split.out $nBodies -t 1>/dev/null
 fi
 # attendiamo che il programma sequenziale termini la sua esecuzione
 wait
@@ -24,9 +24,9 @@ while [[ ((proc -le n_proc)) ]]
 do  
 	if [ "$#" -eq 4 ] 
 	then
-	    mpirun -np $proc nbody_def.out $nBodies -t 1>/dev/null
+	    mpirun -np $proc ../nbody_split.out $nBodies -t 1>/dev/null
     	else
-	    mpirun -np $proc nbody_def.out $nBodies -t
+	    mpirun -np $proc ../nbody_split.out $nBodies -t
 	fi
 	# attendiamo che il programma termini la sua esecuzione 
 	wait

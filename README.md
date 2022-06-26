@@ -451,7 +451,7 @@ vCPU   |  Input  | Tempo
   </p></td>
   <td>
 
-  ![alt](./strong_scalability_graph.png)
+  ![alt](./Documentation/strong_scalability_graph.png)
 
   </td>
     </tr>
@@ -486,7 +486,7 @@ vCPU   |  Input  | Tempo
   </p></td>
   <td>
 
-  ![alt](./weak_scalability_graph.png)
+  ![alt](./Documentation/weak_scalability_graph.png)
 
   </td>
     </tr>

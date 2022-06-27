@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
             for (i = 0, j = 0; i < worker_rank; i++, j++)
                 MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
             // PORTION EXCHANGE BETWEEN PROCESSES: SEND OWN PORTION TO OTHER PROCESSES
-            MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_send_next);
+            MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, bcast_pointer_next_req);
             // PORTION EXCHANGE BETWEEN PROCESSES: RECEIVE PORTION FROM OTHER PROCESSES
             for (i = worker_rank + 1; i < n_workers; i++, j++)
                 MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
@@ -343,18 +343,8 @@ int main(int argc, char *argv[])
             if (worker_rank == MASTER && iter > 1 && print_res == 1)
                 printResults(p, nBodies);
             // WAITS FOR THE PREVIOUS REQUEST TO WRITE IN THE SEND BUFFER
-            MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
-            prepereSendBuffer(p, p_send, own_portion, start_own_portion);
-            integratePositionSplit(p_send, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-            // SWAP BUFFER POINTERS FOR NEXT ITERATION
-            tmp_buf_swap = p;
-            p = p_send;
-            p_send = tmp_buf_swap;
-            // SWAP REQEUST POINTER FOR NEXT ITERATION
-            tmp_bcast_send_req_swap = bcast_pointer_prec_req;
-            bcast_pointer_prec_req = bcast_pointer_next_req;
-            bcast_pointer_next_req = tmp_bcast_send_req_swap;
-            
+            MPI_Wait(bcast_pointer_next_req, MPI_STATUS_IGNORE);
+            integratePositionSplit(p, dt, own_portion, start_own_portion, Fx, Fy, Fz);
             // END i-th ITERATION
             if (worker_rank == MASTER)
             {

@@ -42,7 +42,7 @@ Per simulare il comportamento di n corpi sono stati implementati diversi algorit
 - tramite un algoritmo pseudocasuale vengono inizializzati i campi di ogni particella
 - la simulazione prevede 10 iterazioni dove ad ognuna:
   - si tiene traccia del tempo di inizio dell'iterazione
-  - in maniera sequenziale ogni particella viene confrontata con tutte le altre per calcolare la forza e la posizione che assumerà all'iterazione successiva
+  - in maniera sequenziale ogni particella viene fatta interagire con tutte le altre per calcolare la forza e la posizione che assumerà all'iterazione successiva
   - viene stampato sullo standard output il tempo impiegato per il completamento dell'iterazione i-esima
 - in fine viene stampato, sempre su standard output, il rapporto iterazioni/secondo.
 
@@ -53,20 +53,20 @@ La soluzione fornita da tale programma è quadratica nel numero di particelle.
 
 Di seguito viene mostrata una versione ottimizzata del programma sopra citato che fa uso della libreria OpenMPI, mediante la quale si va a distribuire il calcolo della forza delle particelle tra n processi nel seguente modo:
 
-- nella soluzione proposta i processi comunicano tra di loro attraverso il communicator MPI_COMM_WORLD. All'interno del gruppo associato a questo communicator i processi vengono distinti in base al loro rank in due "categorie":
+- nella soluzione proposta i processi comunicano tra loro attraverso il communicator MPI_COMM_WORLD. All'interno del gruppo associato a questo communicator i processi vengono distinti in base al loro rank in due "categorie":
   - MASTER: un solo processo appartiene a questa categoria e viene identificato con rank = 0;
   - SLAVE: tutti gli altri invece appartengono a quest'altra categoria ed hanno rank > 0;
-- tutti i processi contribuiscono alla computazione.
+- tutti i processi contribuiscono al calcolo della forza delle particelle.
 
 - la simulazione viene fatta su un numero preciso di particelle se tale valore viene specificato dall'utente tramite riga di comando. Altrimenti viene fatta su un numero predefinito di particelle, indicato all'interno del programma.
 - ciascun processo esegue il calcolo per la distribuzione del carico di lavoro e cioè calcola la propria porzione di particelle e quella degli altri processi.
-- Dopodiché inizializza la sua porzione di particelle.
-- Procede con la simulazione, la quale prevede 10 iterazioni, dove in ciascuna, ogni processo:  
-  1) invia la propria porzione di particelle a tutti gli altri n-1 processi utilizzando una comunicazione collettiva non bloccante;
-  2) sempre tramite operazioni di comunicazioni collettive non bloccanti resta in attesa che tutti gli altri processi gli inviino la loro porzione;
-  3) durante questa fase di comunicazione inizia il calcolo della forza di ciascuna particella della sua porzione. Ovvero per calcolare una "parte della forza" di ogni particella, fa interagire ciascuna particella della sua porzione con tutte le altre al suo interno.
+- ognuno inizializza la propria porzione di particelle.
+- si procede con la simulazione, la quale prevede 10 iterazioni, dove in ciascuna, ogni processo:  
+  1) invia la propria porzione di particelle a tutti gli altri n-1 processi utilizzando la comunicazione collettiva non bloccante MPI_Ibcast;
+  2) sempre tramite la funzione MPI_Ibcast resta in attesa che tutti gli altri processi gli inviino la loro porzione;
+  3) durante la fase di comunicazione inizia il calcolo della forza di ciascuna particella della sua porzione. Ovvero per calcolare una "parte della forza" di ogni particella, fa interagire ciascuna particella della sua porzione con tutte le altre al suo interno.
   4) non appena riceve una o più porzioni continua il calcolo della forza delle proprie particelle, utilizzando quelle appena ricevute. Ovvero fa interagire ciascuna particella della sua porzione con quelle ricevute, andando poi ad aggiornare il valore intermedio della sua forza.
-  5) terminate le fasi di ricezione e calcolo della forza, il processo può proseguire con l'aggiornamento dei valori(forza e posizione) della propria porzione di particelle. Tale risultato è necessario per il prossimo passo della simulazione. Ma arrivati a questo punto il processo disporrebbe già della porzione necessaria sulla quale lavorare alla prossima iterazione. Dunque sia il MASTER sia gli SLAVE, prima di procedere con l'aggiornamento dei valori verificano se la richiesta relativa all'invio della propria porzione(punto 1.) è stata completata. Nel caso in cui la richiesta è ancora in fase di completamento il processo va a scrivere i risultati in un secondo buffer di invio, il quale verrà usato nel prossimo passo della simulazione. Inoltre c'è da tener presente che quando ciò accade all'iterazione successiva viene utilizzata una richiesta diversa dalla precedente. Questo comporta che dalla seconda iterazione in poi il processo, nel caso in cui la richiesta "corrente" di invio della sua porzione non è stata ancora completata, deve controllare che quella precedente sia terminata per poter scrivere nell'altro buffer. Altrimenti il processo si mette in attesa che la richiesta precedente venga completata, per poi proseguire con l'aggiornamento e la scrittura dei risultati nel buffer corrispondente. In tutti gli altri casi se la richiesta "corrente" relativa all'invio della sua porzione è stata completata riusa lo stesso buffer sul quale stava già lavorando e la stessa richiesta anche per l'interazione successiva.
+  5) terminate le fasi di ricezione e calcolo della forza, il processo può proseguire con l'aggiornamento dei valori(forza e posizione) della propria porzione di particelle. Tale risultato è necessario per il prossimo passo della simulazione. Ma arrivati a questo punto il processo disporrebbe già della porzione necessaria sulla quale lavorare alla prossima iterazione. Dunque sia il MASTER sia gli SLAVE, prima di procedere con l'aggiornamento dei valori verificano se la richiesta relativa all'invio della propria porzione(punto 1.) è stata completata. Nel caso in cui la richiesta è ancora in fase di completamento il processo va a scrivere i risultati in un secondo buffer, il quale verrà usato nel prossimo passo della simulazione. Inoltre c'è da tener presente che quando ciò accade all'iterazione successiva viene utilizzata una richiesta diversa dalla precedente. Questo comporta che dalla seconda iterazione in poi il processo, nel caso in cui la richiesta "corrente" di invio della sua porzione non è stata ancora completata, deve controllare che quella precedente sia terminata per poter scrivere nell'altro buffer. Altrimenti il processo si mette in attesa che la richiesta precedente venga completata, per poi proseguire con l'aggiornamento e la scrittura dei risultati nel buffer corrispondente. In tutti gli altri casi se la richiesta "corrente" relativa all'invio della sua porzione è stata completata riusa lo stesso buffer sul quale stava già lavorando e la stessa richiesta anche per l'interazione successiva.
   Questo viene fatto per permettere al processo di proseguire il lavoro evitando inutili attese.
   6) Se il processo in esecuzione è il MASTER, quest'ultimo, stampa a video il tempo impiegato per il completamento dell'iterazione i-esima e passa alla prossima iterazione. Altrimenti se il processo è uno SLAVE passa direttamente alla prossima iterazione.
 - Al termine della simulazione il processo MASTER stampa sullo standard output il rapporto iterazioni/secondo.
@@ -74,13 +74,14 @@ Di seguito viene mostrata una versione ottimizzata del programma sopra citato ch
 ## Dettagli implementativi
 
 ### Definizione del tipo body
+
 Le particelle vengono rappresentate tramite delle strutture C così definite:
 
 ```C
 typedef struct { float x, y, z, vx, vy, vz; } Body;
 ```
 
-Ma visto che ogni particella è una sestupla di float, dove ciascuna di esse rappresenta rispettivamente la sua posizione nello spazio(x, y, z) e la forza(vx, vy, vz), è possibile dichiarare un array di particelle nel modo sottostante (così come viene fatto anche nel programma di partenza):
+Ma visto che ogni particella è una sestupla di float, dove ciascuna di esse rappresenta rispettivamente la sua posizione nello spazio(x, y, z) e la forza(vx, vy, vz), è possibile dichiarare un array di particelle in questo modo (così come viene fatto anche nel programma di partenza):
 
 ```C
   int bytes = nBodies * sizeof(Body);
@@ -103,22 +104,21 @@ La dichiarazione dell'insieme di particelle come un array di float e non come un
   ...
 ```
 
-Indichiamo con *n_workers* il numero di processi che contribuiscono al calcolo della forza delle particelle.
-Come accennato nella sezione precedente, ogni processo contribuisce alla computazione e il processo MASTER, in più rispetto agli altri tiene traccia del tempo impiegato dall'iterazione i-esima della simulazione e stampa a video tali informazioni. Il motivo per il quale è stata fatta tale scelte deriva dal fatto che: il tempo necessario per l'iterazione i-esima, in cui il master oltre a partecipare al calcolo della forza delle particelle esegue anche le operazioni appena dette, è minore in confronto ad una nella quale il MASTER non contribuisce al calcolo della forza, ma riceve solo i risultati e tiene solo traccia del tempo facendone la stampa a video. Poichè gli altri n-1 processi avrebbero più carico di lavoro e il processo MASTER resterebbe in stato di hidle fino al ricevimento dei risultati per poi per poi notificare il tempo impiegato dai processi per il calcolo mentre essi già hanno iniziato l'iterazione successiva. Dunque il tempo complessivo del programma in cui il MASTER "non lavora" è maggiore rispetto a quando esso contribuisce al calcolo della forza. Ecco perchè in questo caso specifico conviene che tutti i processi contribuiscano al calcolo.
-Il numero di particelle viene diviso tra gli n processi andando a dividere la taglia dell'input per il numero di n_workers. Una volta calcolata la porzione che dovrà essere assegnata a ciascun processo e l'eventuale resto, vengono allocati gli array proc_portion_size[] e proc_portion_start[]. Questi array servono per tener traccia delle porzioni di ciascun processo per la fase di invio e ricezione delle altre particelle(questo aspetto verrà approfondito in più avanti, quando verrà trattata la fase di invio e ricezione tramite le chiamate collettive MPI_Ibcast). Dopodichè viene fatto il calcolo delle porzioni da assegnare a ciascun processo come mostrato di seguito
+Indichiamo con *n_workers* il numero di processi che contribuiscono al calcolo della forza delle particelle. Come già accennato, ogni processo contribuisce alla computazione e il processo MASTER, in più rispetto agli altri tiene traccia del tempo impiegato dall'iterazione i-esima della simulazione e stampa a video tali informazioni. Il motivo per il quale è stata fatta tale scelte deriva dal fatto che: il tempo necessario per l'iterazione i-esima, in cui il MASTER oltre a partecipare al calcolo della forza delle particelle esegue anche le operazioni appena dette, è minore in confronto ad una nella quale il MASTER non contribuisce al calcolo della forza, ma riceve solo i risultati e tiene solo traccia del tempo facendone la stampa a video. Poichè gli altri n-1 processi avrebbero più carico di lavoro e il processo MASTER resterebbe in stato di hidle fino al ricevimento dei risultati. Dunque il tempo complessivo del programma in cui il MASTER "non lavora" è maggiore rispetto a quando esso contribuisce al calcolo della forza. Ecco perchè in questo caso specifico conviene che tutti i processi contribuiscano al calcolo.
+Il numero di particelle viene diviso tra gli n processi andando a dividere la taglia dell'input per il numero di n_workers. Calcolata la porzione che dovrà essere assegnata a ciascun processo e l'eventuale resto, vengono allocati gli array proc_portion_size[] e proc_portion_start[]. Questi array servono per tener traccia delle porzioni di ciascun processo per la fase di invio e ricezione delle altre particelle(questo aspetto verrà approfondito in più avanti, quando verrà trattata la fase di invio e ricezione tramite le chiamate collettive MPI_Ibcast). Dopodichè viene fatto il calcolo delle porzioni da assegnare a ciascun processo come mostrato di seguito
 
 ```C
-void calculatePortions(int proc_portion_size[], int proc_portion_start[], int n_workers, int portion, int offset)
+void calculatePortions(int proc_portion_size[], int proc_portion_start[], int n_workers, int portion, int rest)
 {
     proc_portion_size[0] = portion;
     proc_portion_start[0] = 0;
 
     int i, j;
 
-    if (offset > 0)
+    if (rest > 0)
     {
         int i, j;
-        for (i = 1, j = 0; j < offset; i++, j++)
+        for (i = 1, j = 0; j < rest; i++, j++)
         {
             proc_portion_size[i] = portion + 1;
             proc_portion_start[i] = portion * i + j;
@@ -126,7 +126,7 @@ void calculatePortions(int proc_portion_size[], int proc_portion_start[], int n_
         for (; i < n_workers; i++, j++)
         {
             proc_portion_size[i] = portion;
-            proc_portion_start[i] = portion * i + offset;
+            proc_portion_start[i] = portion * i + rest;
         }
     }
     else
@@ -140,7 +140,8 @@ void calculatePortions(int proc_portion_size[], int proc_portion_start[], int n_
 }
 ```
 
-Se il numero di particelle non è divisibile per il numero di processi, il resto delle particelle viene distribuito a partire dal 2° processo (il cui rank = 1) in poi. Cioè viene assegnata una particella in più, delle restanti, a tali processi. Ciò viene fatto perché in questo caso è possibile "alleggerire" il carico di lavoro del processo MASTER poiché, come già detto, a differenza dei processi SLAVE, fa alcune operazioni in più. Altrimenti le particelle vengono distribuite equamente tra gli n processi. Per ogni processo dunque viene calcolata la propria porzione e l'indice dal quale inizia il suo intervallo nell'array di particelle buf (descritto al punto precedente. C'è da notare che le porzioni e gli indici di inizio di queste ultime non vengono moltiplicati per 6. Questo perché, come già spiegato, è possibile tramite un puntatore a Body accede all'i-esima particella all'interno di buf.
+Se il numero di particelle non è divisibile per il numero di processi, il resto delle particelle viene distribuito a partire dal 2° processo (il cui rank = 1) in poi. Cioè viene assegnata una particella in più, delle restanti, a tali processi. Ciò viene fatto perché in questo caso è possibile "alleggerire" il carico di lavoro del processo MASTER poiché, come già detto, a differenza dei processi SLAVE, fa alcune operazioni in più. Altrimenti le particelle vengono distribuite equamente tra gli n processi.
+Per ogni processo dunque viene calcolata la propria porzione e l'indice dal quale inizia il suo intervallo nell'array di particelle buf (descritto al punto precedente). C'è da notare che le porzioni e gli indici di inizio di queste ultime non vengono moltiplicati per 6. Questo perché, come già spiegato, è possibile tramite un puntatore a Body accede all'i-esima particella all'interno di buf.
 
 ### Inizializzazione porzione di particelle
 
@@ -160,9 +161,9 @@ Se il numero di particelle non è divisibile per il numero di processi, il resto
 Vengono definite delle "variabili di processo", ovvero variabili che servono al processo in esecuzione:
 
 - *start* ed *end* per delineare l'intervallo della porzione di particelle, nell'array buf.
-- *Fx*, *Fy*, *Fz* servono per tener traccia dei valori della forza delle particelle, durante i vari calcoli(tra le diverse invocazioni della funzione bodyForceSplit) con le altre particelle che vengono ricevute dagli altri processi(L'utilità di tali variabili verrà approfondita più avanti).
+- *Fx*, *Fy*, *Fz* servono per tener traccia dei valori intermedi relativi al calcolo della forza delle proprie particelle, durante i vari calcoli(tra le diverse invocazioni della funzione bodyForceSplit) con le altre particelle che vengono ricevute dagli altri processi(l'utilità di tali variabili verrà approfondita più avanti).
 
-Ogni processo, una volta definito il proprio intervallo, inizializza le proprie particelle sulle quali deve lavorare. La fase di inizializzazione avviene tramite un algoritmo deterministico, ovvero utilizzando la funzione *determisticInitBodiesSplit*. A differenza del programma di partenza, che fa uso di un algoritmo che assegna valori alle particelle in maniera casuale, è stato utilizzato un algoritmo deterministico per poter valutare la correttezza del programma. Nel dettaglio la funzione utilizzata a tale scopo è la seguente:
+Ogni processo, una volta definito il proprio intervallo, inizializza le proprie particelle sulle quali deve lavorare. La fase di inizializzazione avviene tramite un algoritmo deterministico, ovvero tramite la funzione *determisticInitBodiesSplit*. A differenza del programma di partenza, che fa uso di un algoritmo il quale assegna valori alle particelle in maniera casuale, è stato utilizzato un algoritmo deterministico per poter valutare la correttezza del programma. Nel dettaglio la funzione utilizzata a tale scopo è la seguente:
 
 ```C
 void determisticInitBodiesSplit(float *buf, int own_portion, int start_own_portion)
@@ -286,8 +287,8 @@ void bodyForceSplit(Body *p, float dt, int own_portion, int start_own_portion, i
 }
 ```
 
-La funzione bodyForeceSplit prende in input essenzialmente l'array di particelle tramite il parametro p (puntatore che punta all'array *buf*), un valore costante dt, la taglia della porzione del processo i-esimo (numero di particelle della sua porzione), l'indice dal quale inizia la sua porzione nell'array di particelle, l'inizio e la fine dell'intervallo (in *buf*) della nuova porzione da utilizzare per il calcolo, ed infine gli array che contengono i valori intermedi Fx, Fy, Fz.
-Inizialmente il processo i-esimo invoca la funzione bodyForceSplit passando come parametri start ed end il proprio intervallo, ovvero i suoi indici di inizio e fine in *buf*. Dunque inizia a calcolare la forza di ciascuna particella della sua porzione, facendo "interagire" ciascuna particella con tutte quante le altre al suo interno. Dopodiché tramite la funzione wait_some_work , sotto riportata:
+La funzione bodyForeceSplit prende in input essenzialmente l'array di particelle tramite il parametro p (puntatore che punta all'array *buf*), un valore costante dt, la taglia della porzione del processo i-esimo (numero di particelle della sua porzione), l'indice dal quale inizia la sua porzione nell'array di particelle, l'inizio(parametro *start*) e la fine(parametro *end*) dell'intervallo (in *buf*) della nuova porzione da utilizzare per il calcolo, ed infine gli array Fx, Fy, Fz che contengono i valori intermedi.
+Inizialmente il processo i-esimo invoca la funzione bodyForceSplit passando come parametri *start* ed *end* il proprio intervallo, ovvero i suoi indici di inizio e fine in *buf*. Dunque comincia a calcolare la forza di ciascuna particella della sua porzione, facendo "interagire" ognuna di esse con tutte quante le altre al suo interno. Dopodiché tramite la funzione wait_some_work , sotto riportata:
 
 ```C
 void waitSomeWork(MPI_Request bcast_recv[], int request_rank_indices[], int requests_ranks[], int n_recv_req, int rank, Body *p, float Fx[], float Fy[], float Fz[], int proc_portion_size[], int proc_portion_start[])
@@ -327,25 +328,29 @@ void waitSomeWork(MPI_Request bcast_recv[], int request_rank_indices[], int requ
 }
 ```
 
-il processo i-esimo per completare il calcolo della forza ha bisogno delle altre porzioni degli n-1 processi. Quindi deve attendere il completamento delle richieste di ricezione. Il primo motivo per il quale si tiene traccia delle richieste di comunicazione è per far in modo che il calcolo continui man mano che le particelle vengono ricevute. Per far sì che ciò avvenga viene utilizzata la funzione MPI_Waitsome, la quale attende che almeno una delle operazioni associate agli handle attivi, nell'array di richieste, sia stata completata e restituisce nella variabile *ready_req* il numero di richieste(indicate nell'array *bcast_recv*) che sono state completate. Inoltre va a scrivere nell'array di indici (*request_rank_indices*), nelle posizioni da 0 a *ready_req*, i corrispondenti indici delle richieste completate. Per risalire al rank del worker relativo a ciascuna richiesta, ogni processo, prima di iniziare la simulazione, inizializza l'array requests_ranks.
+attendere il completamento delle richieste di ricezione delle altre porzioni degli n-1 processi per completare il calcolo della forza. Il primo motivo per il quale si tiene traccia delle richieste di comunicazione è per far in modo che il calcolo continui man mano che le particelle vengono ricevute. A tal proposito viene utilizzata la funzione MPI_Waitsome, la quale attende che almeno una delle operazioni associate agli handle attivi, nell'array di richieste(*bcast_recv*), sia stata completata e restituisce nella variabile *ready_req* il numero di richieste completate. Inoltre va a scrivere nell'array di indici (*request_rank_indices*), nelle posizioni da 0 a *ready_req*, i corrispondenti indici delle richieste completate. Per risalire al rank del worker relativo a ciascuna richiesta, ogni processo, prima di iniziare la simulazione, inizializza l'array requests_ranks.
 Quando una richiesta è stata completata viene deallocata, e l'handle associato viene impostato a MPI_REQUEST_NULL. Se l'array di richieste (*bcast_recv*) non contiene handle attivi, la chiamata ritorna immediatamente restituendo in *ready_req* il valore MPI_UNDEFINED. Dunque la prima volta che viene chiamata MPI_Waitsome se ci sono ancora richieste che non sono state ancora completate si entra nel ciclo while. All'interno del ciclo viene decrementata la variabile *count*, la quale tiene traccia delle richieste che devono essere ancora completate. *count* ha un ruolo importante che a breve verrà chiarito. Poi si va a scorrere l'array degli indici delle richieste completate, dove per ognuna di queste, si va a calcolare l'intervallo di particelle (in *buf*) del processo corrispondente, sul quale andare ad invocare la funzione bodyForceSplit per riprendere il calcolo della forza delle particelle del processo in esecuzione. Terminato il calcolo intermedio utilizzando le particelle ricevute, viene invocata nuovamente la funzione MPI_Waitsome e tutto ciò viene iterato fin quando non ci sono più richieste attive e quindi fin quando l'ultima MPI_Waitsome restituisce in *ready_req* il valore MPI_UNDEFINED. Ma quando si esce dal *while* non sono state ancora utilizzate le ultime particelle ricevute! È qui che si nota l'utilità della variabile *count*, la quale ha un duplice scopo. Il primo è quello di andare appunto a completare il calcolo della forza utilizzando le ultime particelle ricevute tramite il ciclo *for*, il quale non fa altro che scorrere l'array di richieste completate e invocare la funzione bodyForceSplit sull'intervallo del processo corrispondente. L'altro motivo è che se la prima volta che viene invocata la MPI_Waitsome (prima di entrare nel *while*), se tutte le richieste sono state completate, il valore restituito in *ready_req* sarà MPI_UNDEFINED. Per cui non si entrerà nel ciclo *while* e di conseguenza le particelle ricevute "associate a queste richieste" non verrebbero utilizzate. Ecco perché all'inizio il valore *count* viene posto uguale al numero di richieste da aspettare, il quale viene passato in input alla funzione(parametro *n_recv_req*). Così facendo tramite lo stesso ragionamento di prima e cioè tramite lo stesso ciclo *for*, sopra descritto, vengono utilizzate le particelle ricevute.
-Una volta che il processo i-esimo ha ricevuto tutte le restanti porzioni ed ha terminato il calcolo della forza delle proprie particelle, esce dalla funzione waitSomeWork ed è pronto per aggiornare i loro valori(posizioni e forza) tramite la funzione integratePosition: 
+Una volta che il processo i-esimo ha ricevuto tutte le restanti porzioni ed ha terminato il calcolo della forza delle proprie particelle, esce dalla funzione waitSomeWork ed è pronto per aggiornare i loro valori(posizioni e forza) tramite la funzione integratePositionSplit: 
 
 ```C
-void integratePosition(Body *p, float dt, int nBodies)
+void integratePositionSplit(Body *p, float dt, int own_portion, int start_own_portion, float Fx[], float Fy[], float Fz[])
 {
-    for (int i = 0; i < nBodies; i++) // integrate position
+    for (int i = 0; i < own_portion; i++)
     {
-        p[i].x += p[i].vx * dt;
-        p[i].y += p[i].vy * dt;
-        p[i].z += p[i].vz * dt;
+        p[start_own_portion + i].vx += dt * Fx[i];
+        p[start_own_portion + i].vy += dt * Fy[i];
+        p[start_own_portion + i].vz += dt * Fz[i];
+
+        p[start_own_portion + i].x += p[start_own_portion + i].vx * dt;
+        p[start_own_portion + i].y += p[start_own_portion + i].vy * dt;
+        p[start_own_portion + i].z += p[start_own_portion + i].vz * dt;
     }
 }
 ```
 
-A questo punto può essere ripreso il discorso sull'importanza del tener traccia delle richieste di comunicazione. Come preannunciato, la richiesta di invio del processo i-esimo ha un ruolo fondamentale. Il motivo per il quale tale richiesta ha particolare importanza è per far in modo che il processo al termine dell'iterazione, nel caso in cui stesse ancora trasmettendo la sua porzione di dati, non debba aspettare il suo completamento per poi passare all'iterazione successiva. Siccome arrivati a questo punto il processo disporrebbe già della porzione necessaria sulla quale lavorare. Per cui, sia il MASTER sia gli SLAVE, prima di aggiornare i loro valori controllano tramite la funzione MPI_Test lo stato della richiesta. Se la richiesta di invio corrente non è stata completata si scrivere il risultato in un secondo buffer, così da permettere al processo di proseguire con il lavoro. Altrimenti, se il processo ha già terminato la fase di trasmissione, viene riutilizzato il buffer corrente anche per l'iterazione successiva.
-Per implementare tale meccanismo, nel caso in cui la richiesta di invio corrente non è stata ancora completata, il processo scrive i risultati nell’altro buffer il quale viene utilizzato nella prossima iterazione. Quando si passa all’iterazione successiva si invia la nuova porzione utilizzando un'altra *MPI_Request*(diversa dalla precedente). Per fare ciò vengono dichiarate due *MPI_Request* (*bcast_send_prec*, *bcast_send_next*) e un due puntatori a *MPI_Request* (*bcast_pointer_next_req* e *bcast_pointer_prec_req*). Tale puntatore viene utilizzato nella funzione *MPI_Ibcast* corrispondente alla chiamata in cui il processo corrente invia la sua porzione. Inizialmente il puntatore *bcast_pointer_next_req* viene fatto puntare a *bcast_send_next*, il quale ha valore *MPI_REQUEST_NULL*. C’è da tener presente che se anche in questa nuova iterazione sia la richiesta di invio "corrente" che quella "precedente" non sono state ancora completate, in questo caso il processo i-esimo dovrà aspettare il completamento della richiesta precedente, visto che non può scrivere nell’altro buffer.
-Al termine di ogni iterazione in cui viene utilizzato il secondo buffer, per garantire la relazione di precedenza sia per le richieste sia per i buffer di invio/ricezione viene fatto lo scambio dei rispettivi puntatori.
+A questo punto può essere ripreso il discorso sull'importanza del tener traccia delle richieste di comunicazione. Come preannunciato, la richiesta di invio del processo i-esimo ha un ruolo fondamentale. Il motivo per il quale tale richiesta ha particolare importanza è per far in modo che il processo dopo aver completato il calcolo della forza delle sue particelle, nel caso in cui stesse ancora trasmettendo la sua porzione, non debba aspettare il suo completamento per poi passare all'iterazione successiva. Siccome, arrivati a questo punto, il processo disporrebbe già della porzione necessaria sulla quale lavorare. Per cui, sia il MASTER sia gli SLAVE, prima di aggiornare i loro valori controllano tramite la funzione MPI_Test lo stato della richiesta. Se la richiesta di invio "corrente" non è stata completata si scrivono i risultati in un secondo buffer, il quale verrà poi utilizzato nella prossima iterazione. Così facendo il processo può proseguire con il lavoro evitando inutili attese. Per implementare tale meccanismo, quando si passa all’iterazione successiva si invia la nuova porzione utilizzando un'altra *MPI_Request*(diversa dalla precedente). Dunque vengono dichiarate due *MPI_Request* (*bcast_send_prec*, *bcast_send_next*) e un due puntatori a *MPI_Request* (*bcast_pointer_next_req* e *bcast_pointer_prec_req*). Il puntatore *bcast_pointer_next_req* viene utilizzato nella funzione *MPI_Ibcast* corrispondente alla chiamata in cui il processo in esecuzione invia la sua porzione. C’è da tener presente che dalla 2° iterazione in poi, se sia la richiesta di invio "corrente" che quella "precedente" non sono state ancora completate, in questo caso il processo i-esimo dovrà aspettare il completamento della richiesta precedente, visto che non può scrivere nell’altro buffer.
+Al termine di ogni iterazione in cui si vanno a scrivere i risultati nell'altro buffer, per garantire la relazione di precedenza sia per le richieste sia per i buffer di invio/ricezione viene fatto lo scambio dei rispettivi puntatori.
+Altrimenti, in tutti gli altri casi, se il processo una volta completato il calcolo della forza delle sua porzione, ha già terminato la fase di trasmissione, viene riutilizzato il buffer corrente anche per l'iterazione successiva.
 
 ## Istruzioni per l'esecuzione
 
@@ -378,7 +383,7 @@ La correttezza del programma viene verificata attraverso n esecuzioni dello stes
 mpirun -np {numero processi} {nome eseguibile} {numero particelle} -t
 ```
 
-Dove ad ogni esecuzione viene dato in input al programma la stessa quantità di particelle e il corrispondente numero di p processi da utilizzare(assegnato in maniera progressiva da 1 a n). Quando viene specificato nel comando il parametro -t, all'inizio dell'esecuzione, il programma genera un file nel quale poi vengono scritti i risultati dalla simulazione. Il nome con il quale viene creato il file dipende dal numero di processi con cui si esegue il programma. Per semplicità i file vengono nominati parallel_{numero processi} es:
+Dove ad ogni esecuzione viene dato in input al programma la stessa quantità di particelle e il corrispondente numero di p processi da utilizzare(assegnato in maniera progressiva da 1 a n). Quando viene specificato nel comando il parametro -t, all'inizio dell'esecuzione il programma genera un file nel quale poi vengono scritti i risultati dalla simulazione. Il nome con il quale viene creato il file dipende dal numero di processi con cui si esegue il programma. Per semplicità i file vengono nominati parallel_{numero processi} es:
 
 ```bash
 es: mpirun -np 4 nbody_split.out 40000 -t

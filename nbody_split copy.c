@@ -24,9 +24,9 @@ void determisticInitBodiesSplit(float *buf, int own_portion, int start_own_porti
         p[start_own_portion + i].x = start_own_portion + i + 1;
         p[start_own_portion + i].y = start_own_portion + i + 1;
         p[start_own_portion + i].z = start_own_portion + i + 1;
-        p[start_own_portion + i].vx = start_own_portion + i + 1;
-        p[start_own_portion + i].vy = start_own_portion + i + 1;
-        p[start_own_portion + i].vz = start_own_portion + i + 1;
+        p[start_own_portion + i].vx = 0.0f;
+        p[start_own_portion + i].vy = 0.0f;
+        p[start_own_portion + i].vz = 0.0f;
     }
 }
 
@@ -177,9 +177,9 @@ void determisticInitBodies(float *buf, int n)
         p[i].x = i + 1;
         p[i].y = i + 1;
         p[i].z = i + 1;
-        p[i].vx = i + 1;
-        p[i].vy = i + 1;
-        p[i].vz = i + 1;
+        p[i].vx = 0.0f;
+        p[i].vy = 0.0f;
+        p[i].vz = 0.0f;
     }
 }
 
@@ -226,7 +226,7 @@ void printResults(Body *p, int nBodies)
 {
     for (int i = 0; i < nBodies; i++)
         // fprintf(output_file, "%e %e %e %e %e %e\n", p[i].x, p[i].y, p[i].z, p[i].vx, p[i].vy, p[i].vz);
-        fprintf(output_file, "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f\n", p[i].x, p[i].y, p[i].z , p[i].vx , p[i].vy, p[i].vz);
+        fprintf(output_file, "%e %e\n", p[i].x, p[i].vx);
 
     fprintf(output_file, "\n");
 }
@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
         float *buf_send = (float *)malloc(bytes);
         Body *p_send = (Body *)buf_send;
         // DEFINE TMP VARIABLES
-        int i, j = 0 , bcast_send_done;
+        int i, j , bcast_send_done;
         Body *tmp_buf_swap;
         MPI_Request pending_allgath_req = MPI_REQUEST_NULL;
         // START i-th PROCES WORK
@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
             for (i = 0, j = 0; i < worker_rank; i++, j++)
                 MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
             // PORTION EXCHANGE BETWEEN PROCESSES: SEND OWN PORTION TO OTHER PROCESSES
-            MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_send_next);
+            MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, bcast_pointer_next_req);
             // PORTION EXCHANGE BETWEEN PROCESSES: RECEIVE PORTION FROM OTHER PROCESSES
             for (i = worker_rank + 1; i < n_workers; i++, j++)
                 MPI_Ibcast(&p[proc_portion_start[i]], proc_portion_size[i] * 6, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
@@ -343,17 +343,24 @@ int main(int argc, char *argv[])
             if (worker_rank == MASTER && iter > 1 && print_res == 1)
                 printResults(p, nBodies);
             // WAITS FOR THE PREVIOUS REQUEST TO WRITE IN THE SEND BUFFER
-            MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
-            prepereSendBuffer(p, p_send, own_portion, start_own_portion);
-            integratePositionSplit(p_send, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-            // SWAP BUFFER POINTERS FOR NEXT ITERATION
-            tmp_buf_swap = p;
-            p = p_send;
-            p_send = tmp_buf_swap;
-            // SWAP REQEUST POINTER FOR NEXT ITERATION
-            tmp_bcast_send_req_swap = bcast_pointer_prec_req;
-            bcast_pointer_prec_req = bcast_pointer_next_req;
-            bcast_pointer_next_req = tmp_bcast_send_req_swap;
+            MPI_Test(bcast_pointer_next_req,&bcast_send_done, MPI_STATUS_IGNORE);
+            if(bcast_send_done == 0)
+            {
+                MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
+                prepereSendBuffer(p, p_send, own_portion, start_own_portion);
+                // CALCULATION OF RESULT
+                integratePositionSplit(p_send, dt, own_portion, start_own_portion, Fx, Fy, Fz);
+                // SWAP BUFFER POINTERS FOR NEXT ITERATION
+                tmp_buf_swap = p;
+                p = p_send;
+                p_send = tmp_buf_swap;
+                // SWAP REQEUST POINTER FOR NEXT ITERATION
+                tmp_bcast_send_req_swap = bcast_pointer_prec_req;
+                bcast_pointer_prec_req = bcast_pointer_next_req;
+                bcast_pointer_next_req = tmp_bcast_send_req_swap;
+            }
+            else
+                integratePositionSplit(p, dt, own_portion, start_own_portion, Fx, Fy, Fz);
             
             // END i-th ITERATION
             if (worker_rank == MASTER)
@@ -363,7 +370,6 @@ int main(int argc, char *argv[])
                     totalTime += tElapsed;
                 printf("Iteration %d: %.3f seconds\n", iter, tElapsed);
             }
-            
         }
         // WAIT LAST PENDING REQUEST RESULTS COMPLETITION AND PROCESES SEND ONLY LAST RESULT TO THE MASTER
         MPI_Gatherv(&p[start_own_portion], own_portion * 6, MPI_FLOAT, p_send, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);

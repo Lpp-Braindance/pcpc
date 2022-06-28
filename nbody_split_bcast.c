@@ -327,12 +327,14 @@ int main(int argc, char *argv[])
                 StartTimer();
 
             for (i = 0, j = 0; i < worker_rank; i++, j++)
-                MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
+                //MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
+                MPI_Ibcast(&body_pos[proc_portion_start[i]], proc_portion_size[i] * 3, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
 
-            MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_send_next);
+            //MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_send_next);
+            MPI_Ibcast(&body_pos[proc_portion_start[i]], proc_portion_size[i] * 3, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_send_next);
             for (i = worker_rank + 1; i < n_workers; i++, j++)
-                MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
-                
+                //MPI_Iallgatherv(body_pos, proc_portion_size[i], MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
+                MPI_Ibcast(&body_pos[proc_portion_start[i]], proc_portion_size[i] * 3, MPI_FLOAT, i, MPI_COMM_WORLD, &bcast_recv[j]);
                 
             
             for (int i = 0; i < own_portion; i++) { Fx[i] = 0.0f; Fy[i] = 0.0f; Fz[i] = 0.0f; }

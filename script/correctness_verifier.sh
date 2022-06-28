@@ -43,6 +43,5 @@ do
 	else
 	    printf "parallel program np %d --> OK\n\n%s" $proc $DIFF
 	fi
-	diff -q parallel_$proc parallel_1
 ((proc++))
 done  

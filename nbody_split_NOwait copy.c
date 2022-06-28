@@ -364,34 +364,34 @@ int main(int argc, char *argv[])
             integrateVelocitySplit(body_vel, dt, own_portion, start_own_portion, Fx, Fy, Fz);
             MPI_Igatherv(&body_vel[start_own_portion], own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD, &gather_vels_req);
 
-            MPI_Wait(bcast_pointer_next_req, MPI_STATUS_IGNORE);
-            integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
+            // MPI_Wait(bcast_pointer_next_req, MPI_STATUS_IGNORE);
+            // integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
 
 
-            // MPI_Test(bcast_pointer_next_req, &bcast_send_done, MPI_STATUS_IGNORE);
-            // if (bcast_send_done == 0)
-            // {
-            //     MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
+            MPI_Test(bcast_pointer_next_req, &bcast_send_done, MPI_STATUS_IGNORE);
+            if (bcast_send_done == 0)
+            {
+                MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
                 
-            //     for (int i = 0; i < own_portion; i++)
-            //     {
-            //         p_send[start_own_portion + i].x = body_pos[start_own_portion + i].x;
-            //         p_send[start_own_portion + i].y = body_pos[start_own_portion + i].y;
-            //         p_send[start_own_portion + i].z = body_pos[start_own_portion + i].z;
-            //     }
-            //     // CALCULATION OF RESULT
-            //     integratePositionSplit(p_send, dt, own_portion, start_own_portion,  body_vel);
-            //     // SWAP BUFFER POINTERS FOR NEXT ITERATION
-            //     tmp_buf_swap = body_pos;
-            //     body_pos = p_send;
-            //     p_send = tmp_buf_swap;
-            //     // SWAP REQEUST POINTER FOR NEXT ITERATION
-            //     tmp_bcast_send_req_swap = bcast_pointer_prec_req;
-            //     bcast_pointer_prec_req = bcast_pointer_next_req;
-            //     bcast_pointer_next_req = tmp_bcast_send_req_swap;
-            // }
-            // else
-            //     integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
+                for (int i = 0; i < own_portion; i++)
+                {
+                    p_send[start_own_portion + i].x = body_pos[start_own_portion + i].x;
+                    p_send[start_own_portion + i].y = body_pos[start_own_portion + i].y;
+                    p_send[start_own_portion + i].z = body_pos[start_own_portion + i].z;
+                }
+                // CALCULATION OF RESULT
+                integratePositionSplit(p_send, dt, own_portion, start_own_portion,  body_vel);
+                // SWAP BUFFER POINTERS FOR NEXT ITERATION
+                tmp_buf_swap = body_pos;
+                body_pos = p_send;
+                p_send = tmp_buf_swap;
+                // SWAP REQEUST POINTER FOR NEXT ITERATION
+                tmp_bcast_send_req_swap = bcast_pointer_prec_req;
+                bcast_pointer_prec_req = bcast_pointer_next_req;
+                bcast_pointer_next_req = tmp_bcast_send_req_swap;
+            }
+            else
+                integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
 
             // END i-th ITERATION
             if (worker_rank == MASTER)

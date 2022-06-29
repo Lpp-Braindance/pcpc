@@ -231,7 +231,7 @@ void printResults(Body *p, int nBodies) // FOR SEQUENTIAL PROGRAM
     fprintf(output_file, "\n");
 }
 
-void printPositionAndVeloxResults(BodyPosition *body_pos, BodyVelocity *body_vel, int nBodies) // FRO PARALLEL PROGRAM
+void printPositionsAndVelocitiesResults(BodyPosition *body_pos, BodyVelocity *body_vel, int nBodies) // FRO PARALLEL PROGRAM
 {
     for (int i = 0; i < nBodies; i++)
         fprintf(output_file, "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
             
             MPI_Wait(&gather_vels_req, MPI_STATUS_IGNORE);
             if (worker_rank == MASTER && iter > 1 && print_res == 1)
-                printPositionAndVeloxResults(body_pos, body_vel, nBodies);
+                printPositionsAndVelocitiesResults(body_pos, body_vel, nBodies);
 
             integrateVelocitySplit(body_vel, dt, own_portion, start_own_portion, Fx, Fy, Fz);
             MPI_Igatherv(&body_vel[start_own_portion], own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD, &gather_vels_req);
@@ -402,7 +402,7 @@ int main(int argc, char *argv[])
         MPI_Gatherv(&body_vel[start_own_portion], own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
 
         if (worker_rank == MASTER && print_res == 1)
-            printPositionAndVeloxResults(body_pos, body_vel, nBodies);
+            printPositionsAndVelocitiesResults(body_pos, body_vel, nBodies);
     }
     // END PROCESES WORK AND PRINT TOTAL TIME FROM MASTER
     if (worker_rank == MASTER)

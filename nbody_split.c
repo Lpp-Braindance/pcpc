@@ -14,14 +14,15 @@ char file_name[50];
 
 // PARALLEL PROGRAM FUNCTIONS
 
-typedef struct
-{
-    float x, y, z;
-} BodyPosition;
-typedef struct
-{
-    float vx, vy, vz;
-} BodyVelocity;
+typedef struct { float x, y, z; } BodyPosition;
+typedef struct { float vx, vy, vz; } BodyVelocity;
+typedef struct 
+{ 
+    int rank, own_portion, start_own_portion;
+    int *procs_portions_sizes, *procs_portions_starts;
+    float *Fx, *Fy, *Fz;
+
+} ProcVariables;
 
 void determisticInitBodiesSplit(BodyPosition *body_pos, BodyVelocity *body_vel, int own_portion, int start_own_portion)
 {
@@ -37,66 +38,61 @@ void determisticInitBodiesSplit(BodyPosition *body_pos, BodyVelocity *body_vel, 
     }
 }
 
-void bodyForceSplit(BodyPosition *p, float dt, int own_portion, int start_own_portion, int start, int end, float Fx[], float Fy[], float Fz[])
+void bodyForceSplit(BodyPosition *body_pos, float dt, ProcVariables proc, int start, int end)
 {
-    for (int i = 0; i < own_portion; i++)
+    for (int i = 0; i < proc.own_portion; i++)
     {
         for (int j = start; j < end; j++) // start = inizio nuova porzione da confrontare end = fine porzione da confrontare
         {
-            float dx = p[j].x - p[start_own_portion + i].x;
-            float dy = p[j].y - p[start_own_portion + i].y;
-            float dz = p[j].z - p[start_own_portion + i].z;
+            float dx = body_pos[j].x - body_pos[proc.start_own_portion + i].x;
+            float dy = body_pos[j].y - body_pos[proc.start_own_portion + i].y;
+            float dz = body_pos[j].z - body_pos[proc.start_own_portion + i].z;
 
             float distSqr = dx * dx + dy * dy + dz * dz + SOFTENING;
             float invDist = 1.0f / sqrt(distSqr);
             float invDist3 = invDist * invDist * invDist;
 
-            Fx[i] += dx * invDist3;
-            Fy[i] += dy * invDist3;
-            Fz[i] += dz * invDist3;
+            proc.Fx[i] += dx * invDist3;
+            proc.Fy[i] += dy * invDist3;
+            proc.Fz[i] += dz * invDist3;
         }
     }
 }
 
-void waitSomeWork(MPI_Request bcast_recv[], int requests_ranks[], int n_recv_req, int rank, BodyPosition *p, float Fx[], float Fy[], float Fz[], int proc_portion_size[], int proc_portion_start[])
+void waitSomeWork(MPI_Request allgath_reqs[], int reqs_ranks[], int n_reqs, BodyPosition *body_pos, ProcVariables proc)
 {
-    int ready_req = 0;
-    int count = n_recv_req;
-    int start, end;
-    int req_compl;
     const float dt = 0.01f;
-    int own_portion = proc_portion_size[rank];
-    int start_own_portion = proc_portion_start[rank];
-
-    int index;
+    int count = n_reqs;
+    int start, end;
+    int index, req_compl;
     while (count > 0)
     {
-        MPI_Waitany(n_recv_req, bcast_recv, &index, MPI_STATUS_IGNORE);
-        req_compl = requests_ranks[index];
-        start = proc_portion_start[req_compl];
-        end = start + proc_portion_size[req_compl];
-        bodyForceSplit(p, dt, own_portion, start_own_portion, start, end, Fx, Fy, Fz);
+        MPI_Waitany(n_reqs, allgath_reqs, &index, MPI_STATUS_IGNORE);
+        req_compl = reqs_ranks[index];
+        start = proc.procs_portions_starts[req_compl];
+        end = start + proc.procs_portions_sizes[req_compl];
+        bodyForceSplit(body_pos, dt, proc, start, end);
         count--;
     }
 }
 
-void integratePositionSplit(BodyPosition *p, float dt, int own_portion, int start_own_portion, BodyVelocity *p_vel)
+void integratePositionSplit(BodyPosition *body_pos, BodyVelocity *body_vel, float dt, int own_portion, int start_own_portion)
 {
     for (int i = 0; i < own_portion; i++)
     {
-        p[start_own_portion + i].x += p_vel[start_own_portion + i].vx * dt;
-        p[start_own_portion + i].y += p_vel[start_own_portion + i].vy * dt;
-        p[start_own_portion + i].z += p_vel[start_own_portion + i].vz * dt;
+        body_pos[start_own_portion + i].x += body_vel[start_own_portion + i].vx * dt;
+        body_pos[start_own_portion + i].y += body_vel[start_own_portion + i].vy * dt;
+        body_pos[start_own_portion + i].z += body_vel[start_own_portion + i].vz * dt;
     }
 }
 
-void integrateVelocitySplit(BodyVelocity *p, float dt, int own_portion, int start_own_portion, float Fx[], float Fy[], float Fz[])
+void integrateVelocitySplit(BodyVelocity *body_vel, float dt, int own_portion, int start_own_portion, float Fx[], float Fy[], float Fz[])
 {
     for (int i = 0; i < own_portion; i++)
     {
-        p[start_own_portion + i].vx += dt * Fx[i];
-        p[start_own_portion + i].vy += dt * Fy[i];
-        p[start_own_portion + i].vz += dt * Fz[i];
+        body_vel[start_own_portion + i].vx += dt * Fx[i];
+        body_vel[start_own_portion + i].vy += dt * Fy[i];
+        body_vel[start_own_portion + i].vz += dt * Fz[i];
     }
 }
 
@@ -131,32 +127,29 @@ void calculatePortions(int proc_portion_size[], int proc_portion_start[], int n_
     }
 }
 
-void calculateAllgathervPortions(int recvcounts[], int displs[], int n_workers, int proc_portion_size[], int proc_portion_start[])
+void calculateAllgathervPortions(int recvcounts[], int displs[], int n_workers, int procs_portions_sizes[], int procs_portions_starts[])
 {
     for (int i = 0; i < n_workers; i++)
     {
-        recvcounts[i] = proc_portion_size[i] * 3;
-        displs[i] = proc_portion_start[i] * 3;
+        recvcounts[i] = procs_portions_sizes[i] * 3;
+        displs[i] = procs_portions_starts[i] * 3;
     }
 }
 
-void initRequestsRanks(int requests_ranks[], int worker_rank, int n_workers)
+void initRequestsRanks(int reqs_ranks[], int worker_rank, int n_workers)
 {
     int i, j;
 
     for (i = 0, j = 0; i < worker_rank; i++, j++)
-        requests_ranks[j] = i;
+        reqs_ranks[j] = i;
 
     for (i = worker_rank + 1; i < n_workers; i++, j++)
-        requests_ranks[j] = i;
+        reqs_ranks[j] = i;
 }
 
 // SEQUENTIAL PROGRAM FUNCTION
 
-typedef struct
-{
-    float x, y, z, vx, vy, vz;
-} Body;
+typedef struct { float x, y, z, vx, vy, vz; } Body;
 
 void determisticInitBodies(float *buf, int n)
 {
@@ -231,7 +224,7 @@ void printResults(Body *p, int nBodies) // FOR SEQUENTIAL PROGRAM
     fprintf(output_file, "\n");
 }
 
-void printPositionAndVeloxResults(BodyPosition *body_pos, BodyVelocity *body_vel, int nBodies) // FRO PARALLEL PROGRAM
+void printPositionsAndVelocitiesResults(BodyPosition *body_pos, BodyVelocity *body_vel, int nBodies) // FRO PARALLEL PROGRAM
 {
     for (int i = 0; i < nBodies; i++)
         fprintf(output_file, "%0.3f %0.3f %0.3f %0.3f %0.3f %0.3f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
@@ -285,124 +278,93 @@ int main(int argc, char *argv[])
             if (print_res == 1)
                 printResults(p, nBodies);
         }
+        // RESOURCES RELEASE
+        free(buf);
     }
     else // PARALLEL PROGRAM
     {
         // CALCULATE WORKLOAD DISTRIBUCTION
         int portion = nBodies / n_workers;
         int rest = nBodies % n_workers;
-        int proc_portion_size[n_workers];
-        int proc_portion_start[n_workers];
-        calculatePortions(proc_portion_size, proc_portion_start, n_workers, portion, rest);
-
+        int procs_portions_sizes[n_workers];
+        int procs_portions_starts[n_workers];
+        calculatePortions(procs_portions_sizes, procs_portions_starts, n_workers, portion, rest);
+        // DEFINE AND INIT BODIES BUFFERS
         int bytes = nBodies * sizeof(BodyPosition);
         float *bodies_positions = (float *)malloc(bytes);
         BodyPosition *body_pos = (BodyPosition *)bodies_positions;
 
-        bytes = nBodies * sizeof(BodyPosition);
-        float *bodies_positions2 = (float *)malloc(bytes);
-        BodyPosition *p_send = (BodyPosition *)bodies_positions2;
-
         bytes = nBodies * sizeof(BodyVelocity);
-        float *bodies_velocites = (float *)malloc(bytes);
-        BodyVelocity *body_vel = (BodyVelocity *)bodies_velocites;
+        float *bodies_velocities = (float *)malloc(bytes);
+        BodyVelocity *body_vel = (BodyVelocity *)bodies_velocities;
 
         int displs[n_workers];
         int recvcounts[n_workers];
-        calculateAllgathervPortions(recvcounts, displs, n_workers, proc_portion_size, proc_portion_start);
-        // DEFINE VARIABLES FOR WORKLOAD INTERVALS
-        int own_portion = proc_portion_size[worker_rank];
-        int start_own_portion = proc_portion_start[worker_rank];
-        int start = start_own_portion;
-        int end = start + own_portion;
-        float Fx[own_portion];
-        float Fy[own_portion];
-        float Fz[own_portion];
+        calculateAllgathervPortions(recvcounts, displs, n_workers, procs_portions_sizes, procs_portions_starts);
+        // DEFINE PROCES VARIABLES
+        ProcVariables proc;
+        proc.rank = worker_rank;
+        proc.own_portion = procs_portions_sizes[worker_rank];
+        proc.start_own_portion = procs_portions_starts[worker_rank];
+        float Fx[proc.own_portion];
+        float Fy[proc.own_portion];
+        float Fz[proc.own_portion];
+        proc.Fx = Fx;  proc.Fy = Fy;  proc.Fz = Fz;
+        proc.procs_portions_sizes = procs_portions_sizes;
+        proc.procs_portions_starts = procs_portions_starts;
+        int start = proc.start_own_portion;
+        int end = start + proc.own_portion;
         // INIT OWN BODY PORTION
-        determisticInitBodiesSplit(body_pos, body_vel, own_portion, start_own_portion);
-        // DEFINE REQUESTS RANKS FOR MPI_WAIT SOME
+        determisticInitBodiesSplit(body_pos, body_vel, proc.own_portion, proc.start_own_portion);
+        // DEFINE REQUESTS FOR PORTIONS EXCHANGES
+        MPI_Request allgath_reqs[n_workers];
+        MPI_Request allgath_send_req = MPI_REQUEST_NULL;
+        MPI_Request gath_vels_reqs = MPI_REQUEST_NULL;
         int reqs_ranks[n_workers - 1];
         initRequestsRanks(reqs_ranks, worker_rank, n_workers);
-        // DEFINE REQUESTS FOR PORTIONS EXCHANGES
-        MPI_Request bcast_recv[n_workers];
-        MPI_Request bcast_send_next = MPI_REQUEST_NULL;
-        MPI_Request bcast_send_prec = MPI_REQUEST_NULL;
-
-        // DEFINE POINTER FOR PREC AND NEXT NONBLOCKING COMMUNICATION REQUESTS
-        MPI_Request *bcast_pointer_next_req = &bcast_send_next;
-        MPI_Request *bcast_pointer_prec_req = &bcast_send_prec;
-        MPI_Request *tmp_bcast_send_req_swap = &bcast_send_prec;
-
-        // DEFINE TMP VARIABLES
-        int i, j = 0, bcast_send_done;
-        BodyPosition *tmp_buf_swap;
-        MPI_Request gather_vels_req = MPI_REQUEST_NULL;
+        int i, j;
         // START i-th PROCES WORK
         for (int iter = 1; iter <= nIters; iter++)
         {
             if (worker_rank == MASTER)
                 StartTimer();
-
+            // PORTION EXCHANGE BETWEEN PROCESSES: RECEIVE PORTION FROM OTHER PROCESSES
             for (i = 0, j = 0; i < worker_rank; i++, j++)
-                MPI_Iallgatherv(body_pos, proc_portion_size[i]*3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
-
-            MPI_Iallgatherv(body_pos, proc_portion_size[i]*3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, bcast_pointer_next_req);
-            
+                MPI_Iallgatherv(body_pos, proc.procs_portions_sizes[i] * 3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &allgath_reqs[j]);
+            // PORTION EXCHANGE BETWEEN PROCESSES: SEND OWN PORTION TO OTHER PROCESSES
+            MPI_Iallgatherv(body_pos, proc.procs_portions_sizes[i] * 3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &allgath_send_req);
+            // PORTION EXCHANGE BETWEEN PROCESSES: RECEIVE PORTION FROM OTHER PROCESSES
             for (i = worker_rank + 1; i < n_workers; i++, j++)
-                MPI_Iallgatherv(body_pos, proc_portion_size[i]*3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &bcast_recv[j]);
-
-            for (int i = 0; i < own_portion; i++) { Fx[i] = 0.0f; Fy[i] = 0.0f; Fz[i] = 0.0f; }
-
-            bodyForceSplit(body_pos, dt, own_portion, start_own_portion, start, end, Fx, Fy, Fz);
-            waitSomeWork(bcast_recv, reqs_ranks, n_workers - 1, worker_rank, body_pos, Fx, Fy, Fz, proc_portion_size, proc_portion_start);
-            // MASTER PRINT INCOMING RESULTS
-            
-            MPI_Wait(&gather_vels_req, MPI_STATUS_IGNORE);
+                MPI_Iallgatherv(body_pos, proc.procs_portions_sizes[i] * 3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MPI_COMM_WORLD, &allgath_reqs[j]);
+            // INIT INTERMEDIATE VALUES FOR BODYFORCE CALCULATION
+            for (int i = 0; i < proc.own_portion; i++) {  proc.Fx[i] = 0.0f;  proc.Fy[i] = 0.0f;  proc.Fz[i] = 0.0f;  }
+            bodyForceSplit(body_pos, dt, proc, start, end);
+            waitSomeWork(allgath_reqs, reqs_ranks, n_workers - 1, body_pos, proc);
+            // WAITS THE COMPLITION OF PREVIOUS REQUEST 
+            MPI_Wait(&gath_vels_reqs, MPI_STATUS_IGNORE);
+            // MASTER PRINT RESULTS RECEIVED
             if (worker_rank == MASTER && iter > 1 && print_res == 1)
-                printPositionAndVeloxResults(body_pos, body_vel, nBodies);
-
-            integrateVelocitySplit(body_vel, dt, own_portion, start_own_portion, Fx, Fy, Fz);
-            MPI_Igatherv(&body_vel[start_own_portion], own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD, &gather_vels_req);
-
-            MPI_Wait(bcast_pointer_next_req, MPI_STATUS_IGNORE);
-            integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
-
-
-            // MPI_Test(bcast_pointer_next_req, &bcast_send_done, MPI_STATUS_IGNORE);
-            // if (bcast_send_done == 0)
-            // {
-            //     MPI_Wait(bcast_pointer_prec_req, MPI_STATUS_IGNORE);
-                
-            //     for (int i = 0; i < own_portion; i++)
-            //     {
-            //         p_send[start_own_portion + i].x = body_pos[start_own_portion + i].x;
-            //         p_send[start_own_portion + i].y = body_pos[start_own_portion + i].y;
-            //         p_send[start_own_portion + i].z = body_pos[start_own_portion + i].z;
-            //     }
-            //     // CALCULATION OF RESULT
-            //     integratePositionSplit(p_send, dt, own_portion, start_own_portion,  body_vel);
-            //     // SWAP BUFFER POINTERS FOR NEXT ITERATION
-            //     tmp_buf_swap = body_pos;
-            //     body_pos = p_send;
-            //     p_send = tmp_buf_swap;
-            //     // SWAP REQEUST POINTER FOR NEXT ITERATION
-            //     tmp_bcast_send_req_swap = bcast_pointer_prec_req;
-            //     bcast_pointer_prec_req = bcast_pointer_next_req;
-            //     bcast_pointer_next_req = tmp_bcast_send_req_swap;
-            // }
-            // else
-            //     integratePositionSplit(body_pos, dt, own_portion, start_own_portion, body_vel);
-
+                printPositionsAndVelocitiesResults(body_pos, body_vel, nBodies);
+            // UPDATE BODIES VELOCITY AND SEND THEM
+            integrateVelocitySplit(body_vel, dt, proc.own_portion, proc.start_own_portion, Fx, Fy, Fz);
+            MPI_Igatherv(&body_vel[proc.start_own_portion], proc.own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD, &gath_vels_reqs);
+            // WAIT SEND REQ COMPLITION BEFORE UPDATE BODIES POSITIONS 
+            MPI_Wait(&allgath_send_req, MPI_STATUS_IGNORE);
+            integratePositionSplit(body_pos, body_vel, dt, proc.own_portion, proc.start_own_portion);
             // END i-th ITERATION
             if (worker_rank == MASTER)
                 printIterTime(iter, tElapsed, totalTime);
         }
-        // WAIT LAST PENDING REQUEST RESULTS COMPLETITION AND PROCESES SEND ONLY LAST RESULT TO THE MASTER
-        MPI_Gatherv(&body_pos[start_own_portion], own_portion * 3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
-        MPI_Gatherv(&body_vel[start_own_portion], own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
+        // SEND LAST RESULTS ONLY TO THE MASTER
+        MPI_Gatherv(&body_pos[proc.start_own_portion], proc.own_portion * 3, MPI_FLOAT, body_pos, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
+        MPI_Gatherv(&body_vel[proc.start_own_portion], proc.own_portion * 3, MPI_FLOAT, body_vel, recvcounts, displs, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
 
         if (worker_rank == MASTER && print_res == 1)
-            printPositionAndVeloxResults(body_pos, body_vel, nBodies);
+            printPositionsAndVelocitiesResults(body_pos, body_vel, nBodies);
+        
+        // RESOURCES RELEASE
+        free(bodies_positions);
+        free(bodies_velocities);
     }
     // END PROCESES WORK AND PRINT TOTAL TIME FROM MASTER
     if (worker_rank == MASTER)
@@ -412,8 +374,7 @@ int main(int argc, char *argv[])
         printf("%d Bodies: average %0.3f Billion Interactions / second\n", nBodies, 1e-9 * nBodies * nBodies / avgTime);
         printf("time : %f \n\n", (end_time - start_time));
     }
-    // RESOURCES RELEASE
-
+    
     MPI_Finalize();
     return 0;
 }

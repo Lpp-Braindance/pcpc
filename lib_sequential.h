@@ -60,3 +60,13 @@ void printResults_sequential(Body *p, int nBodies, MPI_File fh)
     }
     
 }
+
+void printResults_2S(Body p[], int nBodies , FILE *output_file)
+{
+    for (int i = 0; i < nBodies; i++)
+    {
+        char line[100];
+        //sprintf(line, "%f %f %f %f %f %f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
+        fprintf(output_file, "%f %f %f %f %f %f\n", p[i].x, p[i].y, p[i].z, p[i].vx, p[i].vy, p[i].vz);
+    }
+}

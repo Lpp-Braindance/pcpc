@@ -1,47 +1,45 @@
 #!/bin/bash
 
+rm parallel_* # elimina tutti gli eventuali file creati da un test precedente 
 
-nBodies=$1 #prende in input come primo parametro il numero di bodies 
-n_proc=$2  #prende in input come secondo parametro il numero di massimo di n processi
-#controlla se viene specificato il parametro -t per eseguire il programma che salva i risultati su file
-#progname=../nbody_split_allgath.out
-progname=../nbody_split.out
-if [[ "$#" -eq 3 && $3 == "-t" ]] 
-then
-    mpirun -np 1 $progname $nBodies -t
+progname=$1  #primo parametro path del programma da eseguire
+nBodies=$2   #secondo parametro numero di bodies 
+n_proc=$3    #terzo parametro numero massimo di n processi
+loop=$4		 #quarto parametro indica se il programma deve essere eseguito in loop
+n_iters=1	 #quinto parametro, se il quarto viene specificato, indica il n° esecuzioni del programma
+proc=1		 #variabile per incrementare il n° di processi
+i=1			 #variabile per iterazione i-esima
+
+if [ "$#" -eq 5 ] # viene specificato il n° di esecuzioni del programma
+then 
+	n_iters=$5
+else
+	n_iters=1
 fi
-#per non mostare l'output del programma, ma solo l'output dei test, specificare -dn
-if [[ "$#" -eq 4 && $4 == "-dn" ]] 
-then
-    mpirun -np 1 $progname $nBodies -t 1>/dev/null
-fi
-# attendiamo che il programma sequenziale termini la sua esecuzione
-wait
-printf "sequential program ready\n\n"
-# settiamo la variabile proc la quale va a specificare il numero di processi per l'i-esima esecuzione 
-proc=2
-# testiamo la correttezza del programma eseguendo lo stesso con un numero progressivo di processi 
-# cioè eseguiamo il programma con 1,2,3,...,max_nproc 
+while [[ ((i -le n_iters)) ]]
+do
+proc=1 # reset del numero di processi
 while [[ ((proc -le n_proc)) ]]
-do  
-	if [ "$#" -eq 4 ] 
+	do  
+		mpirun -np $proc --oversubscribe $progname $nBodies -t
+		wait # attesa che il programma termini la sua esecuzione 
+		# confronto dei risultati con quelli del programma sequenziale tramite il comando diff 
+		# diff -q solo se ci stanno differenze le ristituisce altrimenti restituisce stringa vuota
+		DIFF=$(diff -q parallel_$proc parallel_1 ) 
+		if [ "$DIFF" != "" ] 
+		then
+			printf "parallel program np %d \!\!\! ERRORE \!\!\! \n\n" $proc
+			exit # termina lo script
+		else
+			printf "parallel program np %d --> OK\n\n%s" $proc $DIFF
+		fi
+		wait # aspetta diff
+		((proc++)) # aumenta n° processi
+	done
+	# se viene passato solo -t e senza specificare il n° di itearzioni va in loop infinito
+	# dunque non incrementiamo la variabile i (arrestare manualmente)
+	if [ "$#" -eq 3 ] || [ "$#" -eq 5 ] 
 	then
-	    mpirun -np $proc $progname $nBodies -t 1>/dev/null
-    	else
-	    mpirun -np $proc $progname $nBodies -t
+		((i++)) # iterazione successiva
 	fi
-	# attendiamo che il programma termini la sua esecuzione 
-	wait
-	# confrontiamo il risultati che ha generato e memorizzato nel suo corrispondente file con quelli
-	# generati dal file sequenziale tramite il comando diff nel quale specifichiamo il parametro -q
-  # che indica a diff di fornire l'output solo se ci sono differenze tra i due file
-	DIFF=$(diff -q parallel_$proc parallel_1 )
-	if [ "$DIFF" != "" ] 
-	then
-	    printf "parallel program np %d \!\!\! ERRORE \!\!\! \n\n" $proc
-		break
-	else
-	    printf "parallel program np %d --> OK\n\n%s" $proc $DIFF
-	fi
-((proc++))
-done  
+done

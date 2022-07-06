@@ -113,7 +113,13 @@ int main(int argc, char *argv[])
             // RESET ACCUMULATORS
             for (int i = 0; i < proc.own_portion; i++) {  Fx[i] = 0.0f;  Fy[i] = 0.0f;  Fz[i] = 0.0f;  }
             // WORK ON OWN PORTION AND INCOMING PORTIONS
-            workOnIncomingPortions(n_workers, bcast_reqs, req_done_indexes, proc, body_pos, dt);
+            for (int i = 0; i < n_workers; i++)
+            {
+                MPI_Wait(&bcast_reqs[i], MPI_STATUS_IGNORE);
+                int start = proc.procs_portions_starts[i];
+                int end = start + proc.procs_portions_sizes[i];
+                bodyForceSplit(body_pos, dt, proc, start, end);
+            }
             // SLAVES SEND THEIR OWN VELOCITIES AND MASTER RECEIVES THEM
             if (iter > 1)
                 MPI_Gatherv(&body_vel[proc.start_own_portion], proc.own_portion, BODY_VEL, &body_vel[proc.start_own_portion], portions_sizes, portions_starts, BODY_VEL, MASTER, MPI_COMM_WORLD);

@@ -124,25 +124,11 @@ void integrateVelocitySplit(BodyVelocity *body_vel, float dt, ProcVariables proc
 }
 
 
-void printResults(BodyPosition body_pos[], BodyVelocity body_vel[], int nBodies , MPI_File fh)
+void printResults(BodyPosition body_pos[], BodyVelocity body_vel[], int nBodies , FILE *output_file)
 {
     for (int i = 0; i < nBodies; i++)
     {
         char line[100];
-        sprintf(line, "%f %f %f %f %f %f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
-        MPI_File_write(fh, line, strlen(line), MPI_CHAR, MPI_STATUS_IGNORE);
-    }
-}
-
-
-
-
-void printResults_2P(BodyPosition body_pos[], BodyVelocity body_vel[], int nBodies , FILE *output_file)
-{
-    for (int i = 0; i < nBodies; i++)
-    {
-        char line[100];
-        //sprintf(line, "%f %f %f %f %f %f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
         fprintf(output_file, "%f %f %f %f %f %f\n", body_pos[i].x, body_pos[i].y, body_pos[i].z, body_vel[i].vx, body_vel[i].vy, body_vel[i].vz);
     }
 }

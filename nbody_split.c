@@ -9,11 +9,10 @@
 #include "lib_parallel.h"  // MY PARALLEL PROGRAM FUNCTIONS
 
 #define MASTER 0
-MPI_File fh;
+FILE *output_file;
 char file_name[50];
 const float dt = 0.01f; // time step
 const int nIters = 10;  // simulation iterations
-FILE *output_file;
 
 int main(int argc, char *argv[])
 {
@@ -30,8 +29,6 @@ int main(int argc, char *argv[])
         // DEFINE FILE NAME
         sprintf(file_name, "parallel_%d", n_workers);
         // CREATE FILE FOR PRINT RESULTS
-        // MPI_File_delete(file_name, MPI_INFO_NULL);
-        // MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDWR | MPI_MODE_CREATE, MPI_INFO_NULL, &fh);
         output_file = fopen(file_name, "w+");
         print_res = 1;
     }
@@ -61,7 +58,7 @@ int main(int argc, char *argv[])
             // UPDATE BODIES VALUES
             integratePosition_sequential(p, dt, nBodies, 0, Fx, Fy, Fz);
             // printIterTime(iter, tElapsed, totalTime);
-            if (print_res == 1) printResults_2S(p, nBodies, output_file);
+            if (print_res == 1) printResults_sequential(p, nBodies, output_file);
                 // printResults_sequential(p, nBodies, fh);
         }
     }
@@ -120,7 +117,8 @@ int main(int argc, char *argv[])
             if (iter > 1)
                 MPI_Gatherv(&body_vel[proc.start_own_portion], proc.own_portion, BODY_VEL, &body_vel[proc.start_own_portion], portions_sizes, portions_starts, BODY_VEL, MASTER, MPI_COMM_WORLD);
             // MASTER PRINTS RESOULTS
-            if (worker_rank == MASTER && iter > 1 && print_res == 1) printResults_2P(body_pos, body_vel, nBodies, output_file);
+            if (worker_rank == MASTER && iter > 1 && print_res == 1) 
+                printResults(body_pos, body_vel, nBodies, output_file);
                 // printResults(body_pos, body_vel, nBodies, fh);
             // UPDATE BODIES VALUES
             integrateVelocitySplit(body_vel, dt, proc);

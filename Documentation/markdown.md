@@ -40,13 +40,9 @@ Per simulare il comportamento di n corpi sono stati implementati diversi algorit
 
 - esegue la simulazione su un numero di particelle che può essere specificato dall'utente tramite riga di comando, oppure su un numero predefinito di particelle, nel caso in cui non venisse fornito alcun input.
 - tramite un algoritmo pseudocasuale vengono inizializzati i campi di ogni particella
-- la simulazione prevede 10 iterazioni dove ad ognuna:
-  - in maniera sequenziale ogni particella viene fatta interagire con tutte le altre per calcolare la forza e la posizione che assumerà all'iterazione successiva;
-  - viene stampato sullo standard output il tempo impiegato per il completamento dell'iterazione i-esima
-- in fine viene stampato, sempre su standard output, il rapporto iterazioni/secondo.
+- la simulazione prevede 10 iterazioni dove ad ognuna, in modo sequenziale ogni particella viene fatta interagire con tutte le altre per calcolare la forza e la posizione che assumerà all'iterazione successiva;
 
-La soluzione fornita da tale programma è quadratica nel numero di particelle.
-È possibile ottimizzare tale codice utilizzando la libreria OpenMPI, in modo da parallelizzare il calcolo.
+La soluzione fornita da questo programma è quadratica nel numero di particelle. È possibile ottimizzare tale codice utilizzando la libreria OpenMPI, in modo da parallelizzare il calcolo.
 
 ## Descrizione soluzione proposta
 
@@ -56,13 +52,13 @@ Di seguito viene mostrata una versione ottimizzata del programma sopra citato ch
   - MASTER: un solo processo appartiene a questa categoria e viene identificato con rank = 0;
   - SLAVE: tutti gli altri invece appartengono a quest'altra categoria ed hanno rank > 0;
 - tutti i processi contribuiscono al calcolo della forza delle particelle.
-- la simulazione viene fatta su un numero preciso di particelle se tale valore viene specificato dall'utente tramite riga di comando. Altrimenti viene fatta su un numero predefinito di particelle, indicato all'interno del programma.
+- La simulazione viene fatta su un numero preciso di particelle se tale valore viene specificato dall'utente tramite riga di comando. Altrimenti viene fatta su un numero predefinito di particelle, indicato all'interno del programma.
 - Ciascun processo, una volta a conoscenza del numero di particelle e processi, esegue il calcolo per la distribuzione del carico di lavoro. Cioè calcola sia la propria porzione di particelle sia quella degli altri processi e dopodiché inizializza le sue particelle.
 In seguito procede con la simulazione, la quale prevede 10 iterazioni, dove in ciascuna ogni processo:  
-  1) tramite invocazioni della funzione collettiva non bloccante MPI_Ibcast invia solo le coordinate(valori : x, y, z) delle sue particelle a tutti i processi e riceve le altre da essi. Vengono scambiate solo le coordinate delle particelle poiché ciascun processo per il calcolo della velocità (valori vx, vy, vz) e della forza di ciascuna sua particella ha bisogno solo delle coordinate di tutte le altre.
-  2) durante la fase di comunicazione inizia il calcolo della forza relativo alla sua porzione di particelle. Ovvero fa interagire ciascuna sua particella con tutte le altre al suo interno.
+  1) tramite invocazioni della funzione collettiva non bloccante MPI_Ibcast invia solo le coordinate(valori : x, y, z) delle sue particelle a tutti i processi e riceve le altre da essi. Vengono scambiate solo le coordinate poiché ciascun processo per il calcolo della velocità (valori vx, vy, vz) e della forza di ciascuna sua particella ha bisogno solo delle coordinate di tutte le altre.
+  2) Durante la fase di comunicazione inizia il calcolo della forza relativo alla sua porzione di particelle. Ovvero fa interagire ciascuna sua particella con tutte le altre al suo interno.
   3) Resta in attesa di ricevere una o più porzioni tramite la funzione MPI_Waitsome. Non appena riceve una o più porzioni riprende il calcolo della forza, utilizzando le particelle appena ricevute, facendole interagire con le proprie. Ripete il passo 3 fin quando ci sono ancora richieste di comunicazione da completare.
-  4) Terminate le fasi di ricezione e calcolo della forza, i processi SLAVE prima di aggiornare i loro valori inviano le velocità calcolate delle proprie particelle al MASTER tramite la funzione MPI_Gatherv. Stessa cosa per il MASTER, ovvero prima di aggiornare i valori delle sue particelle attende la ricezione dei risultati delle velocità da parte degli SLAVE. Solo il MASTER ha bisogno di tutti i valori delle particelle poiché esso deve collezionarli tutti per poi scriverli su un file. Subito dopo, il processo può aggiornare i valori(coordinate e velocità) della propria porzione di particelle. Tali risultati sono necessari per il prossimo passo della simulazione.
+  4) Terminate le fasi di ricezione e calcolo della forza, i processi SLAVE prima di aggiornare i loro valori inviano le velocità calcolate delle proprie particelle al MASTER, tramite la funzione MPI_Gatherv. Stessa cosa per il MASTER, ovvero prima di aggiornare i valori delle sue particelle attende la ricezione dei risultati delle velocità da parte degli SLAVE. Solo il MASTER ha bisogno di tutti i valori delle particelle poiché esso deve collezionarli tutti per poi scriverli su un file. Subito dopo, il processo può aggiornare i valori(coordinate e velocità) della propria porzione di particelle. Tali risultati sono necessari per il prossimo passo della simulazione.
   
 ## Dettagli implementativi
 
@@ -74,7 +70,7 @@ Le particelle nel programma sequenziale vengono rappresentate tramite un'unica s
 typedef struct { float x, y, z, vx, vy, vz; } Body;
 ```
 
-Mentre nella versione parallela, vengono rappresentate attraverso due *struct*:
+Mentre nella versione parallela tramite due *struct*:
 
 ```C
 
@@ -83,7 +79,7 @@ typedef struct { float vx, vy, vz; } BodyVelocity;
 
 ```
 
-La prima contiene le informazioni riguardanti le coordinate nello spazio e l'altra invece i valori relativi alla velocità. Dunque, quando il programma viene eseguito con più processi: per le particelle vengono allocati due array, uno per le coordinate e l'altro per le velocità(entrambi con dimensione pari al numero di particelle dato in input); vengono definiti i tipi di dati derivati MPI corrispondenti e viene fatto il commit di questi ultimi per poter utilizzare le strutture definite nelle funzioni di comunicazione MPI.
+La prima contiene le informazioni riguardanti le coordinate nello spazio e l'altra invece i valori relativi alla velocità. Dunque quando il programma viene eseguito con più processi: per le particelle vengono allocati due array, uno per le coordinate e l'altro per le velocità(entrambi con dimensione pari al numero di particelle dato in input); vengono definiti i tipi di dati derivati MPI corrispondenti e viene fatto il commit di questi ultimi per poter utilizzare le strutture definite nelle funzioni di comunicazione MPI.
 ```C
   // DEFINE BODY TYPES
   MPI_Datatype BODY_POS, BODY_VEL;
@@ -103,7 +99,7 @@ La prima contiene le informazioni riguardanti le coordinate nello spazio e l'alt
   BodyVelocity body_vel[nBodies];
 ```
 
-Questa suddivisione è stata fatta, come già accennato, perché il processo per calcolare la forza e la velocità delle proprie particelle ha bisogno di conoscere solo le coordinate di tutte le altre. L'unico processo che invece ha bisogno di conoscere oltre alle coordinate anche gli altri valori è il MASTER, poiché esso deve collezionare tutti i risultati per poi stamparli su un file.
+Questa suddivisione è stata fatta, come già accennato, perché il processo per calcolare la forza e la velocità delle proprie particelle ha bisogno di conoscere solo le coordinate di tutte le altre. L'unico processo che invece ha bisogno di sapere oltre alle coordinate anche gli altri valori è il MASTER, poiché esso deve collezionare tutti i risultati per poi stamparli su un file.
 Grazie a queste osservazioni è stato possibile ridurre considerevolmente l'overhead di comunicazione allo stretto necessario.
 
 ### Distribuzione del carico di lavoro
@@ -116,8 +112,7 @@ Grazie a queste osservazioni è stato possibile ridurre considerevolmente l'over
   calculatePortions(portions_sizes, portions_starts, n_workers, portion, rest);
 ```
 
-Indichiamo con *n_workers* il numero di processi che contribuiscono al calcolo della forza delle particelle.
-Ogni processo contribuisce alla computazione e il processo MASTER, in più rispetto agli altri colleziona i risultati delle varie iterazioni e li scrive su un file. Il numero di particelle viene distribuito tra gli n processi andando a dividere la taglia dell'input per il numero di n_workers. Calcolata la porzione che dovrà essere assegnata a ciascun processo e l'eventuale resto, vengono allocati gli array *procs_portions_sizes[ ]* e *procs_portions_starts[ ]*. Questi array servono per tener traccia delle porzioni di ciascun processo per la fase di invio e ricezione delle altre particelle(questo aspetto verrà approfondito in più avanti, quando verrà trattata la fase di invio e ricezione tramite le chiamate collettive *MPI_Ibcast*). Dopodiché viene fatto il calcolo delle porzioni e degli indici di inizio corrispondenti da assegnare a ciascun processo, come mostrato di seguito:
+Indichiamo con *n_workers* il numero di processi che contribuiscono al calcolo della forza delle particelle. Ogni processo contribuisce alla computazione e il processo MASTER, in più rispetto agli altri colleziona i risultati delle varie iterazioni e li scrive su un file. Il numero di particelle viene distribuito tra gli n processi andando a dividere la taglia dell'input per il numero di n_workers. Calcolata la porzione che dovrà essere assegnata a ciascun processo e l'eventuale resto, vengono allocati gli array *procs_portions_sizes[ ]* e *procs_portions_starts[ ]*. Questi array servono per tener traccia delle porzioni di ciascun processo per la fase di invio e ricezione delle altre particelle(questo aspetto verrà approfondito in più avanti, quando verrà trattata la fase di invio e ricezione tramite le chiamate collettive *MPI_Ibcast*). Dopodiché viene fatto il calcolo delle porzioni e degli indici di inizio corrispondenti da assegnare a ciascun processo, come mostrato di seguito:
 
 ```C
 void calculatePortions(int procs_portions_sizes[], int procs_portions_starts[], int n_workers, int portion, int rest)
@@ -199,7 +194,6 @@ void determisticInitBodiesSplit(BodyPosition *body_pos, BodyVelocity *body_vel, 
     // DEFINE REQUESTS FOR PORTIONS EXCHANGES
     MPI_Request bcast_reqs[n_workers];
     MPI_Request bcast_reqs2[n_workers];
-    MPI_Request body_vel_gath = MPI_REQUEST_NULL;
     int reqs_ranks[n_workers];
     int req_done_indexes[n_workers];
     // START i-th PROCES WORK
@@ -211,13 +205,15 @@ void determisticInitBodiesSplit(BodyPosition *body_pos, BodyVelocity *body_vel, 
         // RESET ACCUMULATORS
         for (int i = 0; i < proc.own_portion; i++) {  Fx[i] = 0.0f;  Fy[i] = 0.0f;  Fz[i] = 0.0f;  }
         // WORK ON OWN PORTION AND INCOMING PORTIONS
+        bodyForceSplit(body_pos, dt, proc, proc.start_own_portion, proc.end_own_portion);
         workOnIncomingPortions(n_workers, bcast_reqs, req_done_indexes, proc, body_pos, dt);
         // SLAVES SEND THEIR OWN VELOCITIES AND MASTER RECEIVES THEM
         if (iter > 1)
             MPI_Gatherv(&body_vel[proc.start_own_portion], proc.own_portion, BODY_VEL, &body_vel[proc.start_own_portion], portions_sizes, portions_starts, BODY_VEL, MASTER, MPI_COMM_WORLD);
         // MASTER PRINTS RESOULTS
-        if (worker_rank == MASTER && iter > 1 && print_res == 1)
-            printResults(body_pos, body_vel, nBodies, fh);
+        if (worker_rank == MASTER && iter > 1 && print_res == 1) 
+            printResults(body_pos, body_vel, nBodies, output_file);
+            // printResults(body_pos, body_vel, nBodies, fh);
         // UPDATE BODIES VALUES
         integrateVelocitySplit(body_vel, dt, proc);
         integratePositionSplit(body_pos, body_vel, dt, proc);
@@ -231,30 +227,7 @@ void determisticInitBodiesSplit(BodyPosition *body_pos, BodyVelocity *body_vel, 
 
 ```
 
-Qui ogni processo tramite invocazioni della funzione collettiva non bloccante MPI_Ibcast invia la propria porzione di particelle a tutti gli altri processi, e riceve da essi le altre porzioni. In questa fase si tiene traccia delle corrispondenti richieste e durante la comunicazione il processo inizializza gli array Fx, Fy, Fz settando tutti i valori a 0. Lo scopo di tali array è memorizzare i "valori intermedi" della forza delle proprie particelle durante i vari calcoli (tra le varie invocazioni della funzione bodyForceSplit) con le altre che vengono ricevute. Dunque Fx, Fy, Fz si potrebbero pensare come a una sorta di "accumulatori temporanei" corrispondenti a ciascuna particella della porzione del processo, per calcolare la loro forza ad ogni iterazione. Fatto ciò, viene invocata la funzione workOnIncomingPortions(): 
-```C
-
-void workOnIncomingPortions(int n_req, MPI_Request bcast_reqs[], int req_done_indexes[], ProcVariables proc, BodyPosition body_pos[], const int dt)
-{
-    int num_req_compltd, start_new_portion, end_new_portion;
-    while (1)
-    {
-        MPI_Waitsome(n_req, bcast_reqs, &num_req_compltd, req_done_indexes, MPI_STATUSES_IGNORE);
-        if (num_req_compltd == MPI_UNDEFINED)
-            break;
-
-        for (int i = 0; i < num_req_compltd; i++)
-        {
-            start_new_portion = proc.procs_portions_starts[req_done_indexes[i]];
-            end_new_portion = start_new_portion + proc.procs_portions_sizes[req_done_indexes[i]];
-            bodyForceSplit(body_pos, dt, proc, start_new_portion, end_new_portion);
-        }
-    }
-}
-
-```
-
-Il processo resta in attesa del completamento di una o più richieste tramite la funzione MPI_Waitsome. Quest'ultima va a scrivere in un array di interi, *req_done_indexes*, gli indici delle richieste che sono state completate. Per ogni richiesta completata viene utilizzata la corrispondente porzione di particelle ricevuta per il "calcolo intermedio" della forza di ciascuna sua particella, invocando la funzione bodyForceSplit():
+Qui ogni processo tramite invocazioni della funzione collettiva non bloccante MPI_Ibcast invia la propria porzione di particelle a tutti gli altri processi, e riceve da questi ultimi le altre porzioni. In questa fase si tiene traccia delle corrispondenti richieste e durante la comunicazione il processo inizializza gli array Fx, Fy, Fz settando tutti i valori a 0. Lo scopo di tali array è memorizzare i "valori intermedi" della forza delle proprie particelle durante i vari calcoli (tra le varie invocazioni della funzione bodyForceSplit) con le altre che vengono ricevute. Dunque Fx, Fy, Fz si potrebbero pensare come a una sorta di "accumulatori temporanei" corrispondenti a ciascuna particella della porzione del processo, per calcolare la loro forza ad ogni iterazione(es. Fx[0],Fy[0],Fz[0] contengono i valori della forza della sua prima particella). In seguito il processo inizia il calcolo della forza relativo alla sua porzione di particelle facendo interagire ciascuna di esse con tutte le altre al suo interno invocando la funzione bodyForceSplit:
 
 ```C
 void bodyForceSplit(BodyPosition *body_pos, float dt, ProcVariables proc, int start_new_portion, int end_new_portion)
@@ -279,11 +252,34 @@ void bodyForceSplit(BodyPosition *body_pos, float dt, ProcVariables proc, int st
 }
 ```
 
-La funzione *bodyForeceSplit()* prende in input essenzialmente l'array di particelle tramite il parametro *body_pos*, un valore costante dt, le informazioni relative al processo in esecuzione tramite il parametro *proc*, gli indici dell'intervallo della nuova porzione, da utilizzare per il calcolo, tramite in parametri *start* ed *end*. Il processo calcola la forza di ciascuna sua particella facendo "interagire" ognuna di esse con quelle ricevute(con quelle della nuova porzione ricevuta).
-Questo processo viene ripetuto per tutte le porzioni ricevute e fin quando tutte le richieste non sono state completate ovvero quando la MPI_Waitsome restituisce MPI_UNDEFINED nella variabile num_req_compltd, la quale indica il numero di richieste completate dopo l'invocazione della MPI_Waitsome.
-Terminata la fase di comunicazione il processo è pronto per aggiornare i valori delle proprie particelle, ma prima di aggiornare tali valori, i processi SLAVE inviano al MASTER i risultati delle velocità calcolate attraverso la funzione MPI_Gather. Il MASTER dopo aver ricevuto i risultati li scrive su un file creato all'avvio del programma.
-Una volta fatto ciò il processo aggiorna i valori delle proprie particelle e passa all'iterazione successiva della simulazione.
-Le funzioni utilizzate per gli aggiornamenti dei valori sono quelle riportate qui sotto:
+La funzione *bodyForeceSplit()* prende in input essenzialmente l'array di particelle tramite il parametro *body_pos*, un valore costante *dt*, le informazioni relative al processo in esecuzione tramite il parametro *proc*, gli indici dell'intervallo della nuova porzione, da utilizzare per il calcolo, tramite in parametri *start* ed *end*. Il processo calcola la forza di ciascuna sua particella facendo "interagire" ognuna di esse con quelle ricevute(con quelle della nuova porzione ricevuta). Quindi inizialmente il processo invoca la bodyForceSplit passandole come parametri *start_new_portion* ed *end_new_portion* l'inizio e la fine della propria porzione di particelle per iniziare il loro calcolo della forza facendo interagire ciascuna sua particella con tutte le altre al suo interno. Fatto ciò, viene invocata la funzione workOnIncomingPortions():
+
+```C
+
+void workOnIncomingPortions(int n_req, MPI_Request bcast_reqs[], int req_done_indexes[], ProcVariables proc, BodyPosition body_pos[], const int dt)
+{
+    int num_req_compltd, start_new_portion, end_new_portion;
+    while (1)
+    {
+        MPI_Waitsome(n_req, bcast_reqs, &num_req_compltd, req_done_indexes, MPI_STATUSES_IGNORE);
+        if (num_req_compltd == MPI_UNDEFINED)
+            break;
+
+        for (int i = 0; i < num_req_compltd; i++)
+        {
+            start_new_portion = proc.procs_portions_starts[req_done_indexes[i]];
+            end_new_portion = start_new_portion + proc.procs_portions_sizes[req_done_indexes[i]];
+            bodyForceSplit(body_pos, dt, proc, start_new_portion, end_new_portion);
+        }
+    }
+}
+
+```
+
+Il processo resta in attesa di ricevere le diverse porzioni da parte degli altri processi. Quindi attende il completamento di una o più richieste di comunicazione, tramite la funzione MPI_Waitsome. Quest'ultima va a scrivere in un array di interi, *req_done_indexes*, gli indici delle richieste che sono state completate. Per ogni richiesta completata viene utilizzata la corrispondente porzione di particelle ricevuta per il "calcolo intermedio" della forza di ciascuna particella del processo, invocando la funzione bodyForceSplit.
+Questa fase viene ripetuta per tutte le porzioni ricevute e fin quando tutte le richieste non sono state completate, ovvero quando la MPI_Waitsome restituisce MPI_UNDEFINED nella variabile num_req_compltd, la quale indica il numero di richieste completate dopo l'invocazione della MPI_Waitsome.
+Terminata la fase di comunicazione il processo è pronto per aggiornare i valori delle proprie particelle, ma prima di aggiornali, i processi SLAVE inviano al MASTER i risultati delle velocità calcolate attraverso la funzione MPI_Gatherv. Il MASTER dopo aver ricevuto i risultati, sempre tramite l'invocazione della funzione MPI_Gatherv, li scrive su un file creato all'avvio del programma. Una volta fatto ciò il processo aggiorna i valori delle proprie particelle e passa all'iterazione successiva della simulazione. Le funzioni utilizzate per gli aggiornamenti dei valori sono quelle riportate qui sotto:
+
 ```C
 void integratePositionSplit(BodyPosition *body_pos, BodyVelocity *body_vel, float dt, ProcVariables proc)
 {
@@ -315,14 +311,14 @@ mpicc nbody.c -lm -o {nome eseguibile}
 es: mpicc nbody.c -lm -o nbody_split.out
 ```
 
-esecuzione senza output su file:
+esecuzione **senza output su file**:
 
 ```bash
 mpirun -np {numero processi} {nome eseguibile} {numero particelle}
 es: mpirun -np 4 nbody_split.out 40000
 ```
 
-esecuzione con output scritto su file per testare la correttezza del programma:
+esecuzione **con output scritto su file** per testare la correttezza del programma:
 
 ```bash
 mpirun -np {numero processi} {nome eseguibile} {numero particelle} -t
@@ -354,11 +350,11 @@ Per automatizzare la verifica della correttezza è stato realizzato uno scritp b
 Comandi per eseguire lo script:
 
 ```bash
-bash correctness_verifier.sh {path del file.out} {numero di particelle} {numero processi} {parametri opzionali}
-es: bash correctness_verifier.sh ../nbody_split_correctness.out 4000 32
+bash correctness_verifier.sh {path file eseguibile} {numero particelle} {numero processi} {parametri opzionali}
+es: bash correctness_verifier.sh ./nbody_split_correctness.out 4000 32
 ```
-Per quanto riguarda i parametri opzionali, se viene specificato il parametro -l seguito dal un numero intero questo sta ad indicare il numero di volte che deve essere ripetuto il test.
-Es: ```bash bash correctness_verifier.sh ../nbody_split_correctness.out 4000 32 -l 4``` esegue il programma 4 volte sull'input e il numero di processi specificato(nbody=4000, p=32).
+Per quanto riguarda i parametri opzionali, se viene specificato il parametro -l seguito da un numero intero questo sta ad indicare il numero di ripetizioni del test.
+Es: ```bash correctness_verifier.sh ./nbody_split_correctness.out 4000 32 -l 4``` esegue il programma sul numero di particelle(4000) e numero massimo di processi(da 1 a 32) per 4 volte.
 
 ```bash
   #!/bin/bash
@@ -384,10 +380,10 @@ Es: ```bash bash correctness_verifier.sh ../nbody_split_correctness.out 4000 32 
   proc=1 # reset del numero di processi
   while [[ ((proc -le n_proc)) ]]
     do  
-      mpirun -np $proc --oversubscribe $progname $nBodies -t
+      mpirun --allow-run-as-root -np $proc --oversubscribe $progname $nBodies -t
       wait # attesa che il programma termini la sua esecuzione 
       # confronto dei risultati con quelli del programma sequenziale tramite il comando diff 
-      # diff -q solo se ci stanno differenze le ristituisce altrimenti restituisce stringa vuota
+      # diff -q solo se ci stanno differenze le restituisce altrimenti restituisce stringa vuota
       DIFF=$(diff -q parallel_$proc parallel_1 ) 
       if [ "$DIFF" != "" ] 
       then
@@ -399,7 +395,7 @@ Es: ```bash bash correctness_verifier.sh ../nbody_split_correctness.out 4000 32 
       wait # aspetta diff
       ((proc++)) # aumenta n° processi
     done
-    # se viene passato solo -t e senza specificare il n° di itearzioni va in loop infinito
+    # se viene passato solo -t e senza specificare il n° di iterazioni va in loop infinito
     # dunque non incrementiamo la variabile i (arrestare manualmente)
     if [ "$#" -eq 3 ] || [ "$#" -eq 5 ] 
     then
@@ -416,7 +412,7 @@ Sia per la scalabilità forte che per quella debole sono stati eseguiti 24 esper
 
 ### Strong scalability
 
-La strong scalability viene valutata, mantenendo la taglia dell'input del problema fissa e facendo aumentare progressivamente il numero di processi, con i quali eseguire il programma. Gli esperimenti sono stati condotti su un input fissato di 24000 particelle. Di seguito vengono mostrati i risultati ottenuti:
+La strong scalability viene valutata, mantenendo la taglia dell'input del problema fissa e facendo aumentare progressivamente il numero di processori. Gli esperimenti sono stati condotti su un input fissato di 24000 particelle. Di seguito vengono mostrati i risultati ottenuti:
 
 <div align="center">
 <table>
@@ -460,11 +456,11 @@ vCPU   |  Input  | Tempo    | speed-up
 </table>
 </div>
 
-Con la scalabilità forte si vede quanto lo speed-up ottenuto dal programma è approssimativamente proporzionale al numero di processori utilizzati, cioè di quanto è stato ridotto il tempo di esecuzione del programma sequenziale utilizzando n processori e quanto esso sia approssimativamente vicino al fattore n. Dagli esiti si può riscontrare che all'aumentare del numero di processi il tempo di esecuzione è abbastanza vicino al fattore n utilizzato e il tempo di esecuzione diminuisce fino ad un certo punto. Da lì in poi la velocità di esecuzione del programma aumenta sempre meno. Questo perchè con l'aumentare del numero di processi, il lavoro svolto da ciascuno di essi diminuisce, ma di contro aumenta l'overhead di comunicazione. Dunque con l'aumentare del numero di processi ognuno di essi spende sempre meno tempo per la computazione e sempre più tempo per la comunicazione che è la parte più onerosa dell'esecuzione e che quindi richiede più tempo.
+Con la scalabilità forte si vede quanto lo speed-up ottenuto dal programma è approssimativamente proporzionale al numero di processori utilizzati, cioè di quanto è stato ridotto il tempo di esecuzione del programma sequenziale utilizzando n processori e quanto esso sia approssimativamente vicino al fattore n. Dagli esiti si può riscontrare che all'aumentare del numero di processi il tempo di esecuzione è abbastanza vicino al fattore n utilizzato e il tempo di esecuzione diminuisce fino ad un certo punto. Da lì in poi la velocità di esecuzione del programma aumenta sempre meno. Questo perché con l'aumentare del numero di processi, il lavoro svolto da ciascuno di essi diminuisce, ma di contro aumenta l'overhead di comunicazione. Dunque con l'aumentare del numero di processi ognuno di essi spende sempre meno tempo per la computazione e sempre più tempo per la comunicazione che è la parte più onerosa dell'esecuzione e che quindi richiede più tempo.
 
 ### Weak scalability
 
- La weak scalability invece, viene valutata facendo variare la taglia dell'input al variare del numero di processi facendo in modo che ogni processo abbia sempre lo stesso workload(ovvero la stessa quantità di lavoro). Gli esperimenti sono stati fatti in modo che ogni processo lavorasse su 1000 particelle. Dunque partendo con un processo con 1000 particelle in input, fino ad arrivare a 24 processi con 24000 particelle come input. Di seguito vengono mostrati i risultati ottenuti:
+ La weak scalability invece, viene valutata facendo variare la taglia dell'input al variare del numero di processori facendo in modo che ogni processo abbia sempre lo stesso workload(ovvero la stessa quantità di lavoro). Gli esperimenti sono stati fatti in modo che ogni processo lavorasse su 1000 particelle. Dunque partendo con un processo con 1000 particelle in input, fino ad arrivare a 24 processi con 24000 particelle come input. Di seguito vengono mostrati i risultati ottenuti:
 
 <div align="center">
 <table>
@@ -507,8 +503,8 @@ vCPU   |  Input  | Tempo   | Efficienza
 </table>
 </div>
 
-La scalabilità debole valuta la capacità di mantenere il tempo di risoluzione fisso risolvendo problemi più grandi su risorse di calcolo più grandi. Quindi il suo obiettivo è quello di misurare la capacità di mantenere un tempo di risoluzione "costante" al variare della taglia e dell'input.
-Possiamo notare dai risultati della weak scalability che le prestazioni degradando costantemente di quasi la metà ogni volta che taglia e numero di processi crescono progressivamente. Il problema in questo caso è che man mano si scala l'overed di comunicazione per ciascun processo aumenta. Questo si evince anche dai valori di efficenza che nello scalare sono sempre più distanti dal valore 1 che sta ad indicare "il valore ottimo" che si mira a raggiungere, ovvero più il valore di efficienza è vicino ad 1 e più i processori non sono in stato di hidle e i costi di comunicazione e sincronizzazione sono più bassi. Più nel dettaglio, il lavoro di computazione per ogni processo rimane lo stesso, ma a questo va aggiunto il tempo di comunicazione, il quale aumenta man mano che si scala, poichè ogni processo deve comunicare con più processi.
+La scalabilità debole valuta la capacità di mantenere il tempo di risoluzione fisso risolvendo problemi più grandi su risorse di calcolo più grandi. Quindi il suo obiettivo è quello di misurare la capacità di mantenere un tempo di risoluzione "costante" al variare del numero di processori e taglia dell'input.
+Possiamo notare dai risultati della weak scalability che le prestazioni degradando costantemente di quasi la metà ogni volta che taglia e numero di processi crescono progressivamente. Il problema in questo caso è che man mano si scala l'overed di comunicazione per ciascun processo aumenta. Questo si evince anche dai valori di efficienza, che nello scalare sono sempre più distanti dal valore 1 il quale sta ad indicare "il valore ottimo" che si mira a raggiungere, ovvero più il valore di efficienza è vicino ad 1 e più i processori non sono in stato di hidle e i costi di comunicazione e sincronizzazione sono più bassi. Più nel dettaglio, il lavoro di computazione per ogni processo rimane lo stesso, ma a questo va aggiunto il tempo di comunicazione, il quale aumenta man mano che si scala, poiché ogni processo deve comunicare con più processi.
 
 ## Conclusioni
 

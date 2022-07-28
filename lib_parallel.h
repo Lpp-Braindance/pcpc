@@ -74,9 +74,12 @@ void workOnIncomingPortions(int n_req, MPI_Request bcast_reqs[], int req_done_in
 
         for (int i = 0; i < num_req_compltd; i++)
         {
-            start_new_portion = proc.procs_portions_starts[req_done_indexes[i]];
-            end_new_portion = start_new_portion + proc.procs_portions_sizes[req_done_indexes[i]];
-            bodyForceSplit(body_pos, dt, proc, start_new_portion, end_new_portion);
+            if(req_done_indexes[i] != proc.rank)
+            {
+                start_new_portion = proc.procs_portions_starts[req_done_indexes[i]];
+                end_new_portion = start_new_portion + proc.procs_portions_sizes[req_done_indexes[i]];
+                bodyForceSplit(body_pos, dt, proc, start_new_portion, end_new_portion);
+            }
         }
     }
 }

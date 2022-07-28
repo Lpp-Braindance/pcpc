@@ -100,7 +100,6 @@ int main(int argc, char *argv[])
         // DEFINE REQUESTS FOR PORTIONS EXCHANGES
         MPI_Request bcast_reqs[n_workers];
         MPI_Request bcast_reqs2[n_workers];
-        MPI_Request body_vel_gath = MPI_REQUEST_NULL;
         int reqs_ranks[n_workers];
         int req_done_indexes[n_workers];
         // START i-th PROCES WORK
@@ -112,6 +111,7 @@ int main(int argc, char *argv[])
             // RESET ACCUMULATORS
             for (int i = 0; i < proc.own_portion; i++) {  Fx[i] = 0.0f;  Fy[i] = 0.0f;  Fz[i] = 0.0f;  }
             // WORK ON OWN PORTION AND INCOMING PORTIONS
+            bodyForceSplit(body_pos, dt, proc, proc.start_own_portion, proc.end_own_portion);
             workOnIncomingPortions(n_workers, bcast_reqs, req_done_indexes, proc, body_pos, dt);
             // SLAVES SEND THEIR OWN VELOCITIES AND MASTER RECEIVES THEM
             if (iter > 1)

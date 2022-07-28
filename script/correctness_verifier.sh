@@ -21,7 +21,7 @@ do
 proc=1 # reset del numero di processi
 while [[ ((proc -le n_proc)) ]]
 	do  
-		mpirun -np $proc --oversubscribe $progname $nBodies -t
+		mpirun --allow-run-as-root -np $proc --oversubscribe $progname $nBodies -t
 		wait # attesa che il programma termini la sua esecuzione 
 		# confronto dei risultati con quelli del programma sequenziale tramite il comando diff 
 		# diff -q solo se ci stanno differenze le ristituisce altrimenti restituisce stringa vuota
